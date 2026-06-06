@@ -1,0 +1,545 @@
+# -*- coding: utf-8 -*-
+import calendar
+import json
+from datetime import date, datetime, timedelta
+from typing import Any
+from zoneinfo import ZoneInfo
+
+STOCKHOLM = ZoneInfo("Europe/Stockholm")
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import get_db
+from app.db_models import EmployeeRow, SchedulePeriodRow, BemanningskravRow, ShiftConfigRow, StaffingTemplateRow, UserRow
+from app.auth_utils import get_current_user, require_admin_or_schemaansvarig
+from app.engine.schemas import (
+    Employee, ContractType, Group, Absence, AbsenceType,
+    ScheduleDay, Shift, ShiftSegment, ShiftType, Bemanningskrav, ValidationResult,
+    SoftConstraint, WishShiftEntry,
+)
+from app.engine.generator import generate_schedule, _make_shift, _build_templates
+from app.engine.solver import validate_schedule
+from app.routers.staffing import _default_krav, _krav_from_template, StaffingTemplate
+
+router = APIRouter(prefix="/api", tags=["schedule"])
+
+
+# ── Request / Response models ────────────────────────────────────────────────
+
+class GenerateRequest(BaseModel):
+    group: Group
+    year: int
+    month: int
+
+
+class GenerateResponse(BaseModel):
+    schedule_days: list[ScheduleDay]
+    validation: ValidationResult
+    stats: dict[str, Any]
+    phase: str = "correction"
+    decisions: list[str] = []
+
+
+class PeriodInfo(BaseModel):
+    phase: str
+    has_schedule: bool
+    apt_date: str | None = None
+    decisions: list[str] = []
+
+
+class AptRequest(BaseModel):
+    apt_date: str | None  # ISO-datum eller null för att ta bort
+
+
+class PhaseUpdateRequest(BaseModel):
+    phase: str  # wish | correction | attested
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def _parse_decisions(decisions_data: Any) -> list[str]:
+    if not decisions_data:
+        return []
+    if isinstance(decisions_data, list):
+        return decisions_data
+    if isinstance(decisions_data, str):
+        try:
+            parsed = json.loads(decisions_data)
+            if isinstance(parsed, list):
+                return parsed
+            return [str(parsed)]
+        except Exception:
+            return [decisions_data]
+    return [str(decisions_data)]
+
+
+def _row_to_employee(row: EmployeeRow) -> Employee:
+    return Employee(
+        id=row.id,
+        name=row.name,
+        contract_type=ContractType(row.contract_type),
+        group=Group(row.group_name),
+        absences=[
+            Absence(date=date.fromisoformat(a["date"]),
+                    absence_type=AbsenceType(a["absence_type"]))
+            for a in (row.absences or [])
+        ],
+        wishes=[date.fromisoformat(w) for w in (row.wishes or [])],
+        vetos=[date.fromisoformat(v) for v in (row.vetos or [])],
+        soft_constraints=[SoftConstraint(**c) for c in (row.soft_constraints or [])],
+        wish_schedule=[WishShiftEntry(**w) for w in (row.wish_schedule or [])],
+        is_dagansvarig=bool(row.is_dagansvarig or False),
+    )
+
+
+def _schedule_day_to_dict(sd: ScheduleDay) -> dict:
+    return sd.model_dump(mode="json")
+
+
+def _dict_to_schedule_day(d: dict) -> ScheduleDay:
+    return ScheduleDay.model_validate(d)
+
+
+# ── Endpoints ────────────────────────────────────────────────────────────────
+
+VALID_PHASES = {"wish", "correction", "attested"}
+
+
+@router.get("/period/{group}/{year}/{month}", response_model=PeriodInfo)
+async def get_period_info(
+    group: str, year: int, month: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRow = Depends(get_current_user),
+):
+    if current_user.username.startswith("demo_"):
+        group = f"Granbacken ({current_user.username})"
+    stmt = select(SchedulePeriodRow).where(
+        SchedulePeriodRow.group_name == group,
+        SchedulePeriodRow.year == year,
+        SchedulePeriodRow.month == month,
+    )
+    row = (await db.execute(stmt)).scalar_one_or_none()
+    if not row:
+        return PeriodInfo(phase="wish", has_schedule=False, apt_date=None, decisions=[])
+    return PeriodInfo(phase=row.phase, has_schedule=bool(row.schedule), apt_date=row.apt_date, decisions=_parse_decisions(row.decisions))
+
+
+@router.post("/period/{group}/{year}/{month}/phase", response_model=PeriodInfo)
+async def advance_phase(
+    group: str, year: int, month: int,
+    req: PhaseUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRow = Depends(require_admin_or_schemaansvarig),
+):
+    if current_user.username.startswith("demo_"):
+        group = f"Granbacken ({current_user.username})"
+    if req.phase not in VALID_PHASES:
+        raise HTTPException(status_code=422, detail=f"Ogiltig fas: {req.phase}")
+
+    stmt = select(SchedulePeriodRow).where(
+        SchedulePeriodRow.group_name == group,
+        SchedulePeriodRow.year == year,
+        SchedulePeriodRow.month == month,
+    )
+    row = (await db.execute(stmt)).scalar_one_or_none()
+
+    fas_namn = {"wish": "Önskemål", "correction": "Korrigering", "attested": "Attesterad"}.get(req.phase, req.phase)
+    timestamp_str = datetime.now(STOCKHOLM).strftime("%Y-%m-%d %H:%M")
+    log_entry = f"[{timestamp_str}] Status ändrad till '{fas_namn}' av {current_user.full_name or current_user.username}."
+
+    if not row:
+        row = SchedulePeriodRow(group_name=group, year=year, month=month, phase=req.phase, schedule=[], decisions=[log_entry])
+        db.add(row)
+    else:
+        row.phase = req.phase
+        current_decisions = list(row.decisions or [])
+        current_decisions.append(log_entry)
+        row.decisions = current_decisions
+
+    await db.commit()
+    return PeriodInfo(phase=row.phase, has_schedule=bool(row.schedule), apt_date=row.apt_date, decisions=_parse_decisions(row.decisions))
+
+
+@router.post("/period/{group}/{year}/{month}/apt", response_model=PeriodInfo)
+async def set_apt(
+    group: str, year: int, month: int,
+    req: AptRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRow = Depends(require_admin_or_schemaansvarig),
+):
+    if current_user.username.startswith("demo_"):
+        group = f"Granbacken ({current_user.username})"
+    stmt = select(SchedulePeriodRow).where(
+        SchedulePeriodRow.group_name == group,
+        SchedulePeriodRow.year == year,
+        SchedulePeriodRow.month == month,
+    )
+    row = (await db.execute(stmt)).scalar_one_or_none()
+    
+    timestamp_str = datetime.now(STOCKHOLM).strftime("%Y-%m-%d %H:%M")
+    log_entry = f"[{timestamp_str}] APT-datum satt till {req.apt_date} av {current_user.full_name or current_user.username}."
+
+    if not row:
+        row = SchedulePeriodRow(group_name=group, year=year, month=month,
+                                phase="wish", schedule=[], apt_date=req.apt_date, decisions=[log_entry])
+        db.add(row)
+    else:
+        row.apt_date = req.apt_date
+        current_decisions = list(row.decisions or [])
+        current_decisions.append(log_entry)
+        row.decisions = current_decisions
+    await db.commit()
+    return PeriodInfo(phase=row.phase, has_schedule=bool(row.schedule), apt_date=row.apt_date, decisions=_parse_decisions(row.decisions))
+
+
+@router.get("/schedule/{group}/{year}/{month}", response_model=list[ScheduleDay])
+async def get_schedule(
+    group: str, year: int, month: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRow = Depends(get_current_user),
+):
+    if current_user.username.startswith("demo_"):
+        group = f"Granbacken ({current_user.username})"
+    stmt = select(SchedulePeriodRow).where(
+        SchedulePeriodRow.group_name == group,
+        SchedulePeriodRow.year == year,
+        SchedulePeriodRow.month == month,
+    )
+    result = await db.execute(stmt)
+    row = result.scalar_one_or_none()
+
+    own_days = []
+    if row and row.schedule:
+        own_days = [_dict_to_schedule_day(sd) for sd in row.schedule]
+
+    # Hämta inlånad personal från andra gruppers scheman
+    other_stmt = select(SchedulePeriodRow).where(
+        SchedulePeriodRow.group_name != group,
+        SchedulePeriodRow.year == year,
+        SchedulePeriodRow.month == month,
+    )
+    other_result = await db.execute(other_stmt)
+    other_rows = other_result.scalars().all()
+
+    borrowed_days = []
+    for r in other_rows:
+        if not r.schedule:
+            continue
+        for sd_dict in r.schedule:
+            sd = _dict_to_schedule_day(sd_dict)
+            if sd.assigned_group == group:
+                borrowed_days.append(sd)
+
+    return own_days + borrowed_days
+
+
+@router.post("/generate", response_model=GenerateResponse)
+async def generate(
+    req: GenerateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRow = Depends(require_admin_or_schemaansvarig),
+):
+    if current_user.username.startswith("demo_"):
+        req.group = f"Granbacken ({current_user.username})"
+    # Hämta anställda för gruppen
+    emp_stmt = select(EmployeeRow).where(EmployeeRow.group_name == req.group.value)
+    emp_result = await db.execute(emp_stmt)
+    emp_rows = emp_result.scalars().all()
+
+    if not emp_rows:
+        raise HTTPException(status_code=404, detail=f"Inga anställda hittades för grupp {req.group.value}")
+
+    employees = [_row_to_employee(r) for r in emp_rows]
+
+    # Hämta bemanningskrav
+    krav_stmt = select(BemanningskravRow).where(
+        BemanningskravRow.group_name == req.group.value,
+        BemanningskravRow.year == req.year,
+        BemanningskravRow.month == req.month,
+    )
+    krav_result = await db.execute(krav_stmt)
+    krav_row = krav_result.scalar_one_or_none()
+
+    if krav_row and krav_row.requirements:
+        krav = [
+            Bemanningskrav(
+                group=Group(k["group"]),
+                date=date.fromisoformat(k["date"]),
+                fm_heads=k.get("fm_heads", 2),
+                em_heads=k.get("em_heads", 0),
+                kval_heads=k.get("kval_heads", 2),
+                natt_heads=k.get("natt_heads", 0),
+            )
+            for k in krav_row.requirements
+        ]
+    else:
+        # Hämta gruppens staffing-template (vardag/helg-uppdelning)
+        tmpl_row = (await db.execute(
+            select(StaffingTemplateRow).where(StaffingTemplateRow.group_name == req.group.value)
+        )).scalar_one_or_none()
+
+        if tmpl_row and tmpl_row.per_weekday:
+            from app.routers.staffing import DayKrav
+            tmpl = StaffingTemplate(
+                group_name=req.group.value,
+                per_weekday=[DayKrav(**d) for d in tmpl_row.per_weekday],
+            )
+            krav = _krav_from_template(tmpl, req.group, req.year, req.month)
+        else:
+            krav = _default_krav(req.group, req.year, req.month)
+
+    _, last_day = calendar.monthrange(req.year, req.month)
+    period_start = date(req.year, req.month, 1)
+    period_end = date(req.year, req.month, last_day)
+
+    # Hämta alla andra schemaperioder för att återställa tidigare lån och låna vid behov
+    other_stmt = select(SchedulePeriodRow).where(
+        SchedulePeriodRow.group_name != req.group.value,
+        SchedulePeriodRow.year == req.year,
+        SchedulePeriodRow.month == req.month,
+    )
+    other_result = await db.execute(other_stmt)
+    other_rows = other_result.scalars().all()
+
+    # 1. Återställ eventuell tidigare inlånad personal från denna grupp i andra scheman
+    other_modified = False
+    for r in other_rows:
+        if not r.schedule:
+            continue
+        r_sched = list(r.schedule)
+        modified_r = False
+        for sd in r_sched:
+            if sd.get("assigned_group") == req.group.value:
+                # Återställ till OBOKAD
+                sd["assigned_group"] = None
+                if sd.get("shift"):
+                    shift = sd["shift"]
+                    shift["shift_type"] = "obokad"
+                    shift["is_unbooked"] = True
+                    # Skapa standard 8-timmars OBOKAD-pass på det datumet
+                    d = date.fromisoformat(sd["date"])
+                    start_dt = datetime(d.year, d.month, d.day, 7, 0, tzinfo=STOCKHOLM)
+                    end_dt = start_dt + timedelta(hours=8.0)
+                    shift["segments"] = [
+                        {"start_time": start_dt.isoformat(), "end_time": end_dt.isoformat()}
+                    ]
+                modified_r = True
+        if modified_r:
+            r.schedule = r_sched
+            db.add(r)
+            other_modified = True
+
+    if other_modified:
+        await db.commit()
+
+    # Hämta passtider — gruppspecifika overrides + globala defaults
+    cfg_stmt = select(ShiftConfigRow).where(
+        (ShiftConfigRow.group_name == req.group.value) | ShiftConfigRow.group_name.is_(None)
+    )
+    cfg_rows = (await db.execute(cfg_stmt)).scalars().all()
+    # Gruppspecifik override vinner över global
+    seen: dict[str, dict] = {}
+    for r in sorted(cfg_rows, key=lambda x: (x.group_name is None)):  # global sist → override vinner
+        seen[r.shift_type] = {"shift_type": r.shift_type, "start_time": r.start_time, "end_time": r.end_time}
+    shift_configs = list(seen.values())
+
+    # Kör generatorn
+    schedule_days, stats = generate_schedule(employees, krav, period_start, period_end, shift_configs)
+
+    # 2. Andra passet: Låna in OBOKAD ordinarie personal från andra grupper vid bemanningsbrist
+    # Hämta alla anställda i hela systemet för regler-koll
+    all_emp_stmt = select(EmployeeRow)
+    all_emp_result = await db.execute(all_emp_stmt)
+    all_employees = [_row_to_employee(r) for r in all_emp_result.scalars().all()]
+    all_employees_map = {emp.id: emp for emp in all_employees}
+
+    krav_map = {k.date: k for k in krav}
+    templates = _build_templates(shift_configs)
+    decisions = stats.get("decisions", [])
+
+    # Beräkna faktiska tillsatta huvuden i det nyss genererade schemat
+    actual_heads = {}
+    for sd in schedule_days:
+        if not sd.shift or sd.shift.is_unbooked:
+            continue
+        stype = sd.shift.shift_type
+        slot = None
+        if stype in (ShiftType.DAG, ShiftType.DAG_TIDIG):
+            slot = "fm"
+        elif stype == ShiftType.DELAD_TUR:
+            slot = "em"
+        elif stype in (ShiftType.KVAL_KORT, ShiftType.KVAL_LANG, ShiftType.APT):
+            slot = "kval"
+        elif stype == ShiftType.NATT:
+            slot = "natt"
+        
+        if slot:
+            key = (sd.date, slot)
+            actual_heads[key] = actual_heads.get(key, 0) + 1
+
+    current_d = period_start
+    while current_d <= period_end:
+        k = krav_map.get(current_d)
+        fm_needed   = k.fm_heads if k else 2
+        em_needed   = k.em_heads if k else 0
+        kval_needed = k.kval_heads if k else 2
+        natt_needed = k.natt_heads if k else 0
+
+        # Rensa eventuella gamla bemanningsbrist-beslut i beslutsloggen för denna dag så vi kan skriva nya
+        # som tar hänsyn till inlåning
+        decisions = [d for d in decisions if not (d.startswith(current_d.isoformat()) and "[Bemanningsbrist]" in d)]
+
+        for slot, needed in [("fm", fm_needed), ("em", em_needed), ("kval", kval_needed), ("natt", natt_needed)]:
+            have = actual_heads.get((current_d, slot), 0)
+            shortage = needed - have
+
+            if shortage <= 0:
+                continue
+
+            needed_shift_type = None
+            if slot == "fm":
+                needed_shift_type = ShiftType.DAG
+            elif slot == "em":
+                needed_shift_type = ShiftType.DELAD_TUR
+            elif slot == "kval":
+                needed_shift_type = ShiftType.KVAL_LANG
+            elif slot == "natt":
+                needed_shift_type = ShiftType.NATT
+
+            if not needed_shift_type:
+                continue
+
+            # Låna in en efter en
+            for _ in range(shortage):
+                borrowed_candidate = None
+
+                for r in other_rows:
+                    if not r.schedule:
+                        continue
+
+                    r_sched = list(r.schedule)
+                    for idx, sd_dict in enumerate(r_sched):
+                        if sd_dict["date"] != current_d.isoformat():
+                            continue
+                        
+                        shift_dict = sd_dict.get("shift")
+                        if not shift_dict or not shift_dict.get("is_unbooked"):
+                            continue
+                        if sd_dict.get("assigned_group"):
+                            continue
+
+                        # Hittade en kandidat med OBOKAD
+                        emp = all_employees_map.get(sd_dict["employee_id"])
+                        if not emp:
+                            continue
+
+                        # Bygg det föreslagna inlåningspasset
+                        borrowed_shift = _make_shift(needed_shift_type, current_d, templates, employee=emp)
+
+                        # Skapa temporära ScheduleDay-objekt för att validera hem-schemat
+                        home_schedule_days = [_dict_to_schedule_day(x) for x in r_sched]
+                        for hsd in home_schedule_days:
+                            if hsd.employee_id == emp.id and hsd.date == current_d:
+                                hsd.shift = borrowed_shift
+                                hsd.assigned_group = req.group.value
+
+                        group_emps = [all_employees_map[x.id] for x in all_employees_map.values() if x.group == r.group_name]
+                        validation_res = validate_schedule(home_schedule_days, group_emps)
+
+                        # Validera mot hårda regler (dygnsvila, veckovila, vetos) för medarbetaren
+                        has_hard_error = any(
+                            err.severity == "hard" and err.employee_id == emp.id
+                            for err in validation_res.errors
+                        )
+
+                        if not has_hard_error:
+                            # Inlåning lyckades! Spara i hem-schemat
+                            sd_dict["shift"] = borrowed_shift.model_dump(mode="json")
+                            sd_dict["assigned_group"] = req.group.value
+                            r.schedule = r_sched
+                            db.add(r)
+
+                            # Lägg till i returlistan för den aktuella gruppen
+                            borrowed_day = ScheduleDay(
+                                date=current_d,
+                                employee_id=emp.id,
+                                shift=borrowed_shift,
+                                assigned_group=req.group.value
+                            )
+                            schedule_days.append(borrowed_day)
+
+                            # Logga beslutet
+                            decisions.append(
+                                f"{current_d.isoformat()}: [Inlåning] Lånat in {emp.name} från {r.group_name} till {req.group.value} för att täcka upp på {slot.upper()} (pass: {needed_shift_type.value})."
+                            )
+
+                            borrowed_candidate = emp
+                            break
+                    if borrowed_candidate:
+                        break
+
+                if borrowed_candidate:
+                    actual_heads[(current_d, slot)] = actual_heads.get((current_d, slot), 0) + 1
+                else:
+                    # Kunde inte låna in någon, flagga bemanningsbrist och rekommendera vikarie
+                    decisions.append(
+                        f"{current_d.isoformat()}: [Bemanningsbrist] Saknas personal på {slot.upper()} i {req.group.value}. Det behövs en vikarie för att täcka upp. (Hinder för ordinarie personal: ingen tillgänglig ordinarie personal med obokad tid)"
+                    )
+
+        current_d += timedelta(days=1)
+
+    # Spara till databasen (upsert) — Spara ENDAST den egna gruppens dagar i periodens schedule-fält!
+    save_stmt = select(SchedulePeriodRow).where(
+        SchedulePeriodRow.group_name == req.group.value,
+        SchedulePeriodRow.year == req.year,
+        SchedulePeriodRow.month == req.month,
+    )
+    save_result = await db.execute(save_stmt)
+    period_row = save_result.scalar_one_or_none()
+
+    own_serialized = [
+        _schedule_day_to_dict(sd) 
+        for sd in schedule_days 
+        if all_employees_map.get(sd.employee_id) and all_employees_map[sd.employee_id].group == req.group.value
+    ]
+
+    stats["decisions"] = decisions
+
+    # Bygg en tidsstämplad loggrad med planerarens namn
+    timestamp_str = datetime.now(STOCKHOLM).strftime("%Y-%m-%d %H:%M")
+    gen_log = f"[{timestamp_str}] Schema genererat av {current_user.full_name or current_user.username}."
+
+    current_decisions = list(period_row.decisions or []) if period_row else []
+    current_decisions.append(gen_log)
+    for d_msg in decisions:
+        current_decisions.append(d_msg)
+
+    if period_row:
+        period_row.schedule = own_serialized
+        period_row.decisions = current_decisions
+        period_row.phase = "correction"
+    else:
+        period_row = SchedulePeriodRow(
+            group_name=req.group.value,
+            year=req.year,
+            month=req.month,
+            phase="correction",
+            schedule=own_serialized,
+            decisions=current_decisions,
+        )
+        db.add(period_row)
+
+    await db.commit()
+
+    validation: ValidationResult = stats.pop("validation")
+
+    return GenerateResponse(
+        schedule_days=schedule_days,
+        validation=validation,
+        stats=stats,
+        phase="correction",
+        decisions=_parse_decisions(decisions),
+    )

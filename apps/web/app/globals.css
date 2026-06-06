@@ -1,0 +1,155 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-sans), system-ui, sans-serif;
+  --font-display: var(--font-display), Georgia, serif;
+  --font-mono: var(--font-mono), monospace;
+
+  --color-paper: #f7f5ec;
+  --color-cream: #ece8d8;
+  --color-ink: #292c20;
+  --color-ink-soft: #5f6450;
+  --color-terracotta: #6f7a3c;  /* primär oliv */
+  --color-sage: #97a06a;        /* ljusare oliv */
+  --color-amber: #b6a04a;       /* dämpad guld-oliv */
+  --color-clay: #565e2c;        /* mörk oliv (hover) */
+}
+
+body {
+  font-family: var(--font-sans);
+  background: #fbf7f0;
+  color: #2b2722;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.display {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  letter-spacing: -0.015em;
+}
+
+.mono-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* Mjuk varm glöd */
+.warm-glow::before {
+  content: "";
+  position: absolute;
+  top: -10%;
+  right: -5%;
+  width: 45rem;
+  height: 45rem;
+  background: radial-gradient(circle at center, rgba(111, 122, 60, 0.14), transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Mjuk uppstigande fade */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.rise { animation: rise 0.8s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.rise-1 { animation-delay: 0.05s; }
+.rise-2 { animation-delay: 0.15s; }
+.rise-3 { animation-delay: 0.25s; }
+.rise-4 { animation-delay: 0.35s; }
+
+/* Mjukt svävande tiles i hero-grafiken */
+@keyframes float-soft {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+.float-a { animation: float-soft 6s ease-in-out infinite; }
+.float-b { animation: float-soft 6s ease-in-out infinite 1.5s; }
+.float-c { animation: float-soft 6s ease-in-out infinite 3s; }
+.float-d { animation: float-soft 6s ease-in-out infinite 4.5s; }
+
+/* Underline expansion från mitten vid hovring */
+.hover-underline-expand {
+  position: relative;
+  text-decoration: none;
+  display: inline-block;
+}
+.hover-underline-expand::after {
+  content: "";
+  position: absolute;
+  width: 100%;
+  transform: scaleX(0);
+  height: 2px;
+  bottom: -3px;
+  left: 0;
+  background-color: currentColor;
+  transform-origin: bottom center;
+  transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.hover-underline-expand:hover::after {
+  transform: scaleX(1);
+}
+
+/* Pulsande bakgrundsglöd för en mer levande känsla */
+@keyframes pulse-glow {
+  0%, 100% { transform: scale(1) translate(0, 0); opacity: 0.6; }
+  50%      { transform: scale(1.12) translate(4%, -3%); opacity: 0.85; }
+}
+.animate-pulse-glow {
+  animation: pulse-glow 16s ease-in-out infinite;
+}
+
+/* Scroll reveal-effekter */
+.reveal, .reveal-up {
+  opacity: 0;
+  transform: translateY(35px);
+  transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, opacity;
+}
+.reveal.visible, .reveal-up.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.reveal-left {
+  opacity: 0;
+  transform: translateX(-40px);
+  transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, opacity;
+}
+.reveal-left.visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.reveal-right {
+  opacity: 0;
+  transform: translateX(40px);
+  transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, opacity;
+}
+.reveal-right.visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.reveal-scale {
+  opacity: 0;
+  transform: scale(0.96);
+  transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, opacity;
+}
+.reveal-scale.visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Staggered transition delays */
+.reveal-delay-1, .delay-100 { transition-delay: 100ms; }
+.reveal-delay-2, .delay-200 { transition-delay: 200ms; }
+.reveal-delay-3, .delay-300 { transition-delay: 300ms; }
+.reveal-delay-4, .delay-400 { transition-delay: 400ms; }
+.reveal-delay-5, .delay-500 { transition-delay: 500ms; }
+
