@@ -38,6 +38,7 @@ export default function SchemalaggarePage() {
 
   // Veckomall state
   const [templateDays, setTemplateDays] = useState<DayKrav[]>(defaultTemplate());
+  const [forceShowNatt, setForceShowNatt] = useState(false);
 
   // Månadsjustering state
   const now = new Date();
@@ -182,7 +183,7 @@ export default function SchemalaggarePage() {
   }
 
   const isNatten = selectedGroup === "Natten";
-  const showNatt = templateDays.some(d => d.natt > 0) || isNatten;
+  const showNatt = templateDays.some(d => d.natt > 0) || isNatten || forceShowNatt;
   const monthName = format(new Date(year, month - 1), "MMMM yyyy", { locale: sv });
 
   // Gruppera månadsdagar vecka för vecka för enklare läsbarhet
@@ -314,188 +315,152 @@ export default function SchemalaggarePage() {
               </div>
             </div>
           ) : activeTab === "template" ? (
-            /* ════════ TAB 1: VECKOMALL ════════ */
-            <div className="bg-white/60 backdrop-blur-md border border-ink/8 rounded-3xl overflow-hidden shadow-sm shadow-clay/5">
-              <div className="px-6 py-4 border-b border-ink/8 bg-cream/40 flex justify-between items-center">
+            /* ════════ TAB 1: VECKOMALL (SAMMANFOGAD) ════════ */
+            <div className="space-y-6">
+              {/* Header för Veckomall */}
+              <div className="bg-white/60 backdrop-blur-md border border-ink/8 p-5 rounded-3xl shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-sm font-bold text-ink">{selectedGroup} — Standardmall</h2>
-                  <p className="text-[11px] text-ink-soft mt-0.5">Antal personal per pass och veckodag (förinställt grundbehov)</p>
+                  <h2 className="text-sm font-bold text-ink">{selectedGroup} — Standardmall & Bemanningskrav</h2>
+                  <p className="text-[11px] text-ink-soft mt-0.5">Konfigurera standardbehovet för pass (Fm, Kväll, Natt) samt tim- och överlappskrav för varje veckodag.</p>
                 </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-ink/8 bg-ink/[0.02]">
-                      <th className="px-6 py-3.5 text-[10px] font-bold text-ink-soft/60 uppercase tracking-wide w-40">Pass</th>
-                      {DAY_NAMES.map((d, i) => (
-                        <th
-                          key={d}
-                          className={`text-center py-3.5 text-xs font-bold w-24 ${
-                            i >= 5 ? "text-terracotta bg-terracotta/[0.03]" : "text-ink-soft"
-                          }`}
-                        >
-                          {d}
-                          {i === 4 && <div className="text-[9px] font-normal text-amber-600 mt-0.5">kväll = helg</div>}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-ink/8">
-                    {/* Förmiddag (ej Natten) */}
-                    {!isNatten && (
-                      <tr className="hover:bg-ink/[0.01] transition-colors">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <span className="w-1.5 h-7 bg-blue-500 rounded-full block shrink-0" />
-                            <div>
-                              <p className="text-xs font-bold text-ink">Förmiddag</p>
-                              <p className="text-[10px] text-ink-soft font-mono">06:45–16:00</p>
-                            </div>
-                          </div>
-                        </td>
-                        {templateDays.map((d, i) => (
-                          <td key={i} className={`py-4 text-center ${i >= 5 ? "bg-terracotta/[0.01]" : ""}`}>
-                            <Stepper value={d.fm} onChange={v => updateTemplate(i, "fm", v)} />
-                          </td>
-                        ))}
-                      </tr>
-                    )}
-
-                    {/* Kväll (ej Natten) */}
-                    {!isNatten && (
-                      <tr className="hover:bg-ink/[0.01] transition-colors">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <span className="w-1.5 h-7 bg-purple-500 rounded-full block shrink-0" />
-                            <div>
-                              <p className="text-xs font-bold text-ink">Kväll</p>
-                              <p className="text-[10px] text-ink-soft font-mono">13:45–21:30</p>
-                            </div>
-                          </div>
-                        </td>
-                        {templateDays.map((d, i) => (
-                          <td key={i} className={`py-4 text-center ${i >= 4 ? "bg-purple-500/[0.01]" : ""}`}>
-                            <Stepper value={d.kval} onChange={v => updateTemplate(i, "kval", v)} />
-                          </td>
-                        ))}
-                      </tr>
-                    )}
-
-                    {/* Natt */}
-                    {(showNatt || isNatten) && (
-                      <tr className="hover:bg-ink/[0.01] transition-colors">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <span className="w-1.5 h-7 bg-slate-800 rounded-full block shrink-0" />
-                            <div>
-                              <p className="text-xs font-bold text-ink">Natt</p>
-                              <p className="text-[10px] text-ink-soft font-mono">22:00–07:00</p>
-                            </div>
-                          </div>
-                        </td>
-                        {templateDays.map((d, i) => (
-                          <td key={i} className="py-4 text-center">
-                            <Stepper value={d.natt} onChange={v => updateTemplate(i, "natt", v)} />
-                          </td>
-                        ))}
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="px-6 py-3.5 border-t border-ink/8 bg-ink/[0.01] text-[10px] text-ink-soft flex items-center justify-between">
-                <span>Natt-raden visas automatiskt om ett värde &gt; 0, eller för gruppen Natten.</span>
+                
                 {!showNatt && !isNatten && (
                   <button
-                    onClick={() => setTemplateDays(prev => prev.map(d => ({ ...d, natt: 0 })))}
-                    className="text-terracotta hover:underline font-bold transition-all cursor-pointer"
+                    onClick={() => setForceShowNatt(true)}
+                    className="text-xs font-bold text-terracotta hover:underline cursor-pointer border border-terracotta/20 hover:border-terracotta/50 bg-terracotta/5 px-3.5 py-2 rounded-xl transition-all"
                   >
-                    Visa natt-rad
+                    + Visa nattpass
                   </button>
                 )}
               </div>
 
-              {/* ── Veckomallens Timkrav ── */}
-              <div className="p-6 border-t border-ink/8 bg-cream/10">
-                <h3 className="text-xs font-bold text-ink mb-1">Timbemanningskrav för grundmallen</h3>
-                <p className="text-[10px] text-ink-soft mb-4">Ange specifika klockslag under dygnet då bemanningen ska begränsas (t.ex. vid överlappning).</p>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {templateDays.map((day, i) => (
-                    <div key={i} className="bg-white/80 border border-ink/8 p-4 rounded-2xl space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-ink">{DAY_NAMES[i]}</span>
-                        <button
-                          onClick={() => {
-                            const copy = [...(day.hourly_requirements || [])];
-                            copy.push({ start_time: "14:00", end_time: "16:00", needed_heads: 2, prioritized_activities: ["planeringstid", "kontorstid"] });
-                            updateTemplateHourly(i, copy);
-                          }}
-                          className="text-[10px] font-bold text-terracotta hover:underline cursor-pointer"
-                        >
-                          + Lägg till timkrav
-                        </button>
+              {/* Grid av Dagskort */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {templateDays.map((day, i) => {
+                  const isWeekend = i === 5 || i === 6; // Lör, Sön
+                  const isFriday = i === 4; // Fre
+                  return (
+                    <div key={i} className="bg-white/60 backdrop-blur-md border border-ink/8 rounded-3xl p-5 flex flex-col gap-4 shadow-xs hover:shadow-md transition-all">
+                      {/* Kort-Header */}
+                      <div className="flex items-center justify-between pb-3 border-b border-ink/5">
+                        <h3 className="font-bold text-sm text-ink">{DAY_NAMES[i]}dag</h3>
+                        <div className="flex gap-1">
+                          {isFriday && <span className="text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-sm">kväll = helg</span>}
+                          {isWeekend && <span className="text-[9px] font-bold bg-terracotta/5 text-terracotta border border-terracotta/15 px-1.5 py-0.5 rounded-sm">helg</span>}
+                        </div>
                       </div>
-                      
-                      <div className="space-y-1.5">
-                        {(day.hourly_requirements || []).map((hr, hrIdx) => (
-                          <div key={hrIdx} className="flex items-center gap-1.5 bg-cream/40 p-2 rounded-lg border border-ink/5">
-                            <input
-                              type="text"
-                              value={hr.start_time}
-                              onChange={e => {
-                                const copy = [...day.hourly_requirements!];
-                                copy[hrIdx] = { ...copy[hrIdx], start_time: e.target.value };
-                                updateTemplateHourly(i, copy);
-                              }}
-                              className="w-12 border border-ink/10 rounded-md px-1 py-0.5 text-[9px] text-center font-mono bg-white focus:outline-none"
-                              placeholder="14:00"
-                            />
-                            <span className="text-[9px] text-ink-soft">—</span>
-                            <input
-                              type="text"
-                              value={hr.end_time}
-                              onChange={e => {
-                                const copy = [...day.hourly_requirements!];
-                                copy[hrIdx] = { ...copy[hrIdx], end_time: e.target.value };
-                                updateTemplateHourly(i, copy);
-                              }}
-                              className="w-12 border border-ink/10 rounded-md px-1 py-0.5 text-[9px] text-center font-mono bg-white focus:outline-none"
-                              placeholder="16:00"
-                            />
-                            <span className="text-[9px] text-ink-soft">Krav:</span>
-                            <input
-                              type="number"
-                              value={hr.needed_heads}
-                              onChange={e => {
-                                const copy = [...day.hourly_requirements!];
-                                copy[hrIdx] = { ...copy[hrIdx], needed_heads: parseInt(e.target.value) || 0 };
-                                updateTemplateHourly(i, copy);
-                              }}
-                              className="w-8 border border-ink/10 rounded-md px-0.5 py-0.5 text-[9px] text-center font-bold bg-white focus:outline-none"
-                              min="0"
-                            />
-                            <button
-                              onClick={() => {
-                                const copy = [...day.hourly_requirements!];
-                                copy.splice(hrIdx, 1);
-                                updateTemplateHourly(i, copy);
-                              }}
-                              className="text-red-500 hover:text-red-700 text-[9px] ml-auto p-0.5 font-bold cursor-pointer"
-                            >
-                              Ta bort
-                            </button>
+
+                      {/* Passbehov (Fm, Kväll, Natt) */}
+                      <div className="grid grid-cols-3 gap-3">
+                        {/* Förmiddag (ej nattgrupp) */}
+                        {!isNatten && (
+                          <div className="bg-blue-50/20 border border-blue-500/10 rounded-2xl p-2.5 flex flex-col items-center justify-center gap-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
+                              <span className="text-[10px] font-bold text-ink-soft">Förmiddag</span>
+                            </div>
+                            <Stepper value={day.fm} onChange={v => updateTemplate(i, "fm", v)} />
                           </div>
-                        ))}
-                        {(!day.hourly_requirements || day.hourly_requirements.length === 0) && (
-                          <p className="text-[10px] text-ink-soft/40 italic">Inga timkrav satta för denna dag.</p>
+                        )}
+
+                        {/* Kväll (ej nattgrupp) */}
+                        {!isNatten && (
+                          <div className="bg-purple-50/20 border border-purple-500/10 rounded-2xl p-2.5 flex flex-col items-center justify-center gap-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 bg-purple-500 rounded-full" />
+                              <span className="text-[10px] font-bold text-ink-soft">Kväll</span>
+                            </div>
+                            <Stepper value={day.kval} onChange={v => updateTemplate(i, "kval", v)} />
+                          </div>
+                        )}
+
+                        {/* Natt */}
+                        {(showNatt || isNatten || day.natt > 0) && (
+                          <div className={`bg-slate-50/20 border border-slate-800/10 rounded-2xl p-2.5 flex flex-col items-center justify-center gap-1.5 ${isNatten ? "col-span-3" : ""}`}>
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 bg-slate-800 rounded-full" />
+                              <span className="text-[10px] font-bold text-ink-soft">Natt</span>
+                            </div>
+                            <Stepper value={day.natt} onChange={v => updateTemplate(i, "natt", v)} />
+                          </div>
                         )}
                       </div>
+
+                      {/* Tim- och överlappskrav */}
+                      <div className="pt-3 border-t border-ink/5 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-ink-soft">Timbemanning / Överlappskrav:</span>
+                          <button
+                            onClick={() => {
+                              const copy = [...(day.hourly_requirements || [])];
+                              copy.push({ start_time: "14:00", end_time: "16:00", needed_heads: 2, prioritized_activities: ["planeringstid", "kontorstid"] });
+                              updateTemplateHourly(i, copy);
+                            }}
+                            className="text-[10px] font-bold text-terracotta hover:underline cursor-pointer"
+                          >
+                            + Lägg till timkrav
+                          </button>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          {(day.hourly_requirements || []).map((hr, hrIdx) => (
+                            <div key={hrIdx} className="flex items-center gap-2 bg-cream/40 p-2 rounded-xl border border-ink/5">
+                              <input
+                                type="text"
+                                value={hr.start_time}
+                                onChange={e => {
+                                  const copy = [...day.hourly_requirements!];
+                                  copy[hrIdx] = { ...copy[hrIdx], start_time: e.target.value };
+                                  updateTemplateHourly(i, copy);
+                                }}
+                                className="w-14 border border-ink/10 rounded-md px-1.5 py-0.5 text-[10px] text-center font-mono bg-white focus:outline-none"
+                                placeholder="14:00"
+                              />
+                              <span className="text-[10px] text-ink-soft">—</span>
+                              <input
+                                type="text"
+                                value={hr.end_time}
+                                onChange={e => {
+                                  const copy = [...day.hourly_requirements!];
+                                  copy[hrIdx] = { ...copy[hrIdx], end_time: e.target.value };
+                                  updateTemplateHourly(i, copy);
+                                }}
+                                className="w-14 border border-ink/10 rounded-md px-1.5 py-0.5 text-[10px] text-center font-mono bg-white focus:outline-none"
+                                placeholder="16:00"
+                              />
+                              <div className="w-px h-3 bg-ink/10" />
+                              <span className="text-[10px] text-ink-soft">Krav:</span>
+                              <input
+                                type="number"
+                                value={hr.needed_heads}
+                                onChange={e => {
+                                  const copy = [...day.hourly_requirements!];
+                                  copy[hrIdx] = { ...copy[hrIdx], needed_heads: parseInt(e.target.value) || 0 };
+                                  updateTemplateHourly(i, copy);
+                                }}
+                                className="w-10 border border-ink/10 rounded-md px-1 py-0.5 text-[10px] text-center font-bold bg-white focus:outline-none"
+                                min="0"
+                              />
+                              <button
+                                onClick={() => {
+                                  const copy = [...day.hourly_requirements!];
+                                  copy.splice(hrIdx, 1);
+                                  updateTemplateHourly(i, copy);
+                                }}
+                                className="text-red-500 hover:text-red-700 text-[10px] ml-auto p-1 font-bold cursor-pointer"
+                              >
+                                Ta bort
+                              </button>
+                            </div>
+                          ))}
+                          {(!day.hourly_requirements || day.hourly_requirements.length === 0) && (
+                            <p className="text-[10px] text-ink-soft/40 italic">Inga timkrav satta för denna dag.</p>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
             </div>
           ) : (
