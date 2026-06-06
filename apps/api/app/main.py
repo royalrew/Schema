@@ -26,7 +26,8 @@ async def cleanup_old_demo_data():
     from sqlalchemy import select, delete
     from datetime import datetime, timedelta, timezone
     
-    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    # Skapa en naive UTC datetime som matchar databasens naiva timestamps
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7)
     
     async with AsyncSessionLocal() as db:
         try:
@@ -66,9 +67,54 @@ async def cleanup_old_demo_data():
             print(f"[DEMO CLEANUP] Fel vid rensning av demo-data: {e}")
 
 
+async def create_default_admin():
+    """Skapar en superadmin om det saknas och miljövariabler finns."""
+    from app.database import AsyncSessionLocal
+    from app.db_models import UserRow
+    from app.auth_utils import hash_password
+    from sqlalchemy import select
+    import os
+    
+    admin_user = os.getenv("TEST_ADMIN_USER")
+    admin_pass = os.getenv("TEST_ADMIN_PASS")
+    
+    if not admin_user or not admin_pass:
+        print("[INIT] TEST_ADMIN_USER eller TEST_ADMIN_PASS saknas i miljövariablerna.")
+        return
+        
+    async with AsyncSessionLocal() as db:
+        try:
+            result = await db.execute(select(UserRow).where(UserRow.username == admin_user))
+            existing = result.scalar_one_or_none()
+            
+            if not existing:
+                row = UserRow(
+                    username=admin_user,
+                    full_name=os.getenv("ORGANIZATION_NAME", "Sara Arnham"),
+                    password_hash=hash_password(admin_pass),
+                    role="superadmin",
+                    invite_accepted=True,
+                )
+                db.add(row)
+                await db.commit()
+                print(f"[INIT] Skapade standard-superadmin: {admin_user}")
+            else:
+                from app.auth_utils import verify_password
+                if not verify_password(admin_pass, existing.password_hash):
+                    existing.password_hash = hash_password(admin_pass)
+                    await db.commit()
+                    print(f"[INIT] Uppdaterade lösenord för superadmin: {admin_user}")
+                else:
+                    print(f"[INIT] Standard-superadmin '{admin_user}' finns redan och har rätt lösenord.")
+        except Exception as e:
+            await db.rollback()
+            print(f"[INIT] Fel vid skapande av standard-superadmin: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await create_tables()
+    await create_default_admin()
     await cleanup_old_demo_data()
     yield
 
