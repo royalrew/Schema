@@ -13,6 +13,13 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", "..", ".."
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://toreboda:toreboda@localhost:5432/toreboda")
 
+# Konvertera standard postgresql:// eller postgres:// till postgresql+asyncpg://
+# för att tvinga SQLAlchemy att använda asyncpg-drivrutinen.
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+elif DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+
 engine = create_async_engine(DATABASE_URL, echo=False)
 
 AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
