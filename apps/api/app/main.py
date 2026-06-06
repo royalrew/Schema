@@ -90,7 +90,7 @@ async def create_default_admin():
             if not existing:
                 row = UserRow(
                     username=admin_user,
-                    full_name=os.getenv("ORGANIZATION_NAME", "Sara Arnham"),
+                    full_name="Sara Arnham",  # Fastställt till Sara Arnham istället för organisationens namn
                     password_hash=hash_password(admin_pass),
                     role="superadmin",
                     invite_accepted=True,
@@ -99,6 +99,13 @@ async def create_default_admin():
                 await db.commit()
                 print(f"[INIT] Skapade standard-superadmin: {admin_user}")
             else:
+                # Fixa om full_name blivit satt till organisationens namn (Töreboda Hemvård) av misstag
+                org_name = os.getenv("ORGANIZATION_NAME")
+                if org_name and existing.full_name == org_name:
+                    existing.full_name = "Sara Arnham"
+                    await db.commit()
+                    print(f"[INIT] Rättade till full_name till 'Sara Arnham' för superadmin.")
+
                 from app.auth_utils import verify_password
                 if not verify_password(admin_pass, existing.password_hash):
                     existing.password_hash = hash_password(admin_pass)
@@ -111,10 +118,49 @@ async def create_default_admin():
             print(f"[INIT] Fel vid skapande av standard-superadmin: {e}")
 
 
+async def seed_default_employees_if_empty():
+    """Om det inte finns några medarbetare alls i databasen, ladda in standardmedarbetarna."""
+    from app.database import AsyncSessionLocal
+    from app.db_models import EmployeeRow
+    from tests.fixtures.golden_employees import GOLDEN_EMPLOYEES
+    from sqlalchemy import select, func
+    
+    async with AsyncSessionLocal() as db:
+        try:
+            result = await db.execute(select(func.count(EmployeeRow.id)))
+            count = result.scalar()
+            
+            if count == 0:
+                print(f"[INIT] Inga medarbetare hittades. Sår databasen med {len(GOLDEN_EMPLOYEES)} medarbetare...")
+                for emp in GOLDEN_EMPLOYEES:
+                    row = EmployeeRow(
+                        id=emp.id,
+                        name=emp.name,
+                        contract_type=emp.contract_type.value,
+                        group_name=emp.group.value,
+                        absences=[
+                            {"date": a.date.isoformat(), "absence_type": a.absence_type.value}
+                            for a in emp.absences
+                        ],
+                        wishes=[],
+                        vetos=[v.isoformat() for v in emp.vetos],
+                        soft_constraints=[],
+                    )
+                    db.add(row)
+                await db.commit()
+                print(f"[INIT] ✓ Sådd klar. {len(GOLDEN_EMPLOYEES)} medarbetare inlagda.")
+            else:
+                print(f"[INIT] Databasen innehåller redan {count} medarbetare. Hoppar över sådd.")
+        except Exception as e:
+            await db.rollback()
+            print(f"[INIT] Fel vid sådd av standardmedarbetare: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await create_tables()
     await create_default_admin()
+    await seed_default_employees_if_empty()
     await cleanup_old_demo_data()
     yield
 
