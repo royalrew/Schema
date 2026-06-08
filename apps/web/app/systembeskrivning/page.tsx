@@ -338,10 +338,11 @@ const SPECIFICATIONS: SpecItem[] = [
 export default function SystembeskrivningPage() {
   const [activeSection, setActiveSection] = useState<Section>("overview");
   const [feedback, setFeedback] = useState<Record<string, { status: "ok" | "fail"; comment: string }>>({});
+  const [saraNotes, setSaraNotes] = useState<string>("");
   const [showFeedbackSummary, setShowFeedbackSummary] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Load feedback from LocalStorage on mount
+  // Load feedback and notes from LocalStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem("sara_schema_feedback");
     if (saved) {
@@ -350,6 +351,10 @@ export default function SystembeskrivningPage() {
       } catch (e) {
         console.error("Kunde inte ladda sparad feedback", e);
       }
+    }
+    const savedNotes = localStorage.getItem("sara_general_notes");
+    if (savedNotes) {
+      setSaraNotes(savedNotes);
     }
   }, []);
 
@@ -363,10 +368,17 @@ export default function SystembeskrivningPage() {
     localStorage.setItem("sara_schema_feedback", JSON.stringify(next));
   };
 
+  const updateNotes = (val: string) => {
+    setSaraNotes(val);
+    localStorage.setItem("sara_general_notes", val);
+  };
+
   const clearAllFeedback = () => {
-    if (window.confirm("Vill du rensa all feedback du lagt in?")) {
+    if (window.confirm("Vill du rensa all feedback och anteckningar du lagt in?")) {
       setFeedback({});
+      setSaraNotes("");
       localStorage.removeItem("sara_schema_feedback");
+      localStorage.removeItem("sara_general_notes");
     }
   };
 
@@ -374,6 +386,12 @@ export default function SystembeskrivningPage() {
     let text = `=== SYSTEMFEEDBACK FRÅN MÖTE MED SARA ===\n`;
     text += `Datum: ${new Date().toLocaleDateString("sv-SE")}\n\n`;
 
+    if (saraNotes) {
+      text += `=== SARA'S ALLMÄNNA ÖNSKEMÅL & ANTECKNINGAR ===\n`;
+      text += `${saraNotes}\n\n`;
+    }
+
+    text += `=== DETALJERADE PUNKTER ===\n`;
     SPECIFICATIONS.forEach(s => {
       const fb = feedback[s.id];
       if (fb) {
@@ -625,87 +643,139 @@ export default function SystembeskrivningPage() {
           </div>
 
           {/* ── Feedback summary & Action buttons ── */}
-          <section className="bg-cream/20 border border-dashed border-ink/20 rounded-[2rem] p-6 md:p-8 space-y-6">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div className="space-y-1">
-                <h3 className="text-base font-bold text-ink">Sammanställning & Feedback</h3>
-                <p className="text-xs text-ink-soft leading-relaxed">
-                  Granska era svar löpande under mötet. När ni gått igenom punkterna kan du kopiera all feedback och spara ner den.
-                </p>
-              </div>
+          <div className="grid md:grid-cols-2 gap-6">
+            
+            {/* Left: Summary checklist */}
+            <section className="bg-cream/20 border border-dashed border-ink/20 rounded-[2rem] p-6 md:p-8 space-y-6 flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <h3 className="text-base font-bold text-ink">Sammanställning & Feedback</h3>
+                  <p className="text-xs text-ink-soft leading-relaxed">
+                    Granska era svar löpande under mötet. När ni gått igenom punkterna kan du visa översikten eller kopiera all feedback till urklipp.
+                  </p>
+                </div>
 
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowFeedbackSummary(!showFeedbackSummary)}
-                  className="px-4 py-2 bg-white border border-ink/8 text-ink text-xs font-bold rounded-xl hover:bg-ink/5 cursor-pointer flex items-center gap-1.5 transition-colors"
-                >
-                  <ClipboardList size={14} /> 
-                  {showFeedbackSummary ? "Dölj översikt" : "Visa översikt"} ({reviewedCount})
-                </button>
-                <button
-                  onClick={copyToClipboard}
-                  disabled={reviewedCount === 0}
-                  className="px-4 py-2 bg-terracotta text-white text-xs font-bold rounded-xl hover:bg-clay disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5 transition-colors"
-                >
-                  <Copy size={14} /> 
-                  {copied ? "Kopierat!" : "Kopiera feedback"}
-                </button>
-                {reviewedCount > 0 && (
+                <div className="flex flex-wrap gap-2">
                   <button
-                    onClick={clearAllFeedback}
-                    className="px-3 py-2 border border-red-200 text-red-600 bg-white text-xs font-bold rounded-xl hover:bg-red-50 cursor-pointer transition-colors"
+                    onClick={() => setShowFeedbackSummary(!showFeedbackSummary)}
+                    className="px-4 py-2 bg-white border border-ink/8 text-ink text-xs font-bold rounded-xl hover:bg-ink/5 cursor-pointer flex items-center gap-1.5 transition-colors"
                   >
-                    Rensa
+                    <ClipboardList size={14} /> 
+                    {showFeedbackSummary ? "Dölj översikt" : "Visa översikt"} ({reviewedCount})
                   </button>
-                )}
+                  <button
+                    onClick={copyToClipboard}
+                    disabled={reviewedCount === 0 && !saraNotes}
+                    className="px-4 py-2 bg-terracotta text-white text-xs font-bold rounded-xl hover:bg-clay disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5 transition-colors"
+                  >
+                    <Copy size={14} /> 
+                    {copied ? "Kopierat!" : "Kopiera feedback"}
+                  </button>
+                  {(reviewedCount > 0 || saraNotes) && (
+                    <button
+                      onClick={clearAllFeedback}
+                      className="px-3 py-2 border border-red-200 text-red-600 bg-white text-xs font-bold rounded-xl hover:bg-red-50 cursor-pointer transition-colors"
+                    >
+                      Rensa
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
 
-            {/* Expanded Feedback view */}
-            {showFeedbackSummary && (
-              <div className="bg-white border border-ink/8 rounded-2xl p-4 md:p-6 space-y-4 rise">
-                <h4 className="font-bold text-xs text-ink pb-2 border-b border-ink/8 flex items-center gap-1.5">
-                  <CheckCircle size={14} className="text-terracotta" /> 
-                  Detaljerad granskning ({reviewedCount} av {totalCount} granskade)
-                </h4>
+              {/* Expanded Feedback view */}
+              {showFeedbackSummary && (
+                <div className="bg-white border border-ink/8 rounded-2xl p-4 space-y-4 rise mt-4">
+                  <h4 className="font-bold text-xs text-ink pb-2 border-b border-ink/8 flex items-center gap-1.5">
+                    <CheckCircle size={14} className="text-terracotta" /> 
+                    Detaljerad granskning ({reviewedCount} av {totalCount} granskade)
+                  </h4>
 
-                {reviewedCount === 0 ? (
-                  <p className="text-xs text-ink-soft italic">Ingen feedback har registrerats än. Klicka på knapparna vid specifikationerna ovan för att fylla i.</p>
-                ) : (
-                  <div className="divide-y divide-ink/5 max-h-[300px] overflow-y-auto pr-2">
-                    {SPECIFICATIONS.map(s => {
-                      const fb = feedback[s.id];
-                      if (!fb) return null;
-                      return (
-                        <div key={s.id} className="py-3 first:pt-0 last:pb-0 flex flex-col md:flex-row justify-between gap-3 text-xs">
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-bold text-ink-soft/60 uppercase font-mono">{s.category}</span>
-                            <h5 className="font-bold text-ink">{s.title}</h5>
+                  {reviewedCount === 0 ? (
+                    <p className="text-xs text-ink-soft italic">Ingen specifik feedback har registrerats än. Klicka på knapparna vid reglerna ovan.</p>
+                  ) : (
+                    <div className="divide-y divide-ink/5 max-h-[200px] overflow-y-auto pr-2">
+                      {SPECIFICATIONS.map(s => {
+                        const fb = feedback[s.id];
+                        if (!fb) return null;
+                        return (
+                          <div key={s.id} className="py-2.5 first:pt-0 last:pb-0 flex flex-col justify-between gap-1 text-[11px]">
+                            <div className="flex justify-between items-start">
+                              <h5 className="font-bold text-ink">{s.title}</h5>
+                              <div>
+                                {fb.status === "ok" ? (
+                                  <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-green-700 bg-green-50 px-1.5 py-0.2 rounded">
+                                    Stämmer
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded">
+                                    Ändra
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                             {fb.comment && (
-                              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg p-2 mt-1 font-medium">
+                              <p className="text-[10px] text-amber-800 bg-amber-50/50 p-1.5 rounded border border-amber-100/50 mt-0.5">
                                 &quot;{fb.comment}&quot;
                               </p>
                             )}
                           </div>
-                          <div className="shrink-0">
-                            {fb.status === "ok" ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-green-100 text-green-800 border border-green-200 px-2 py-0.5 rounded-full">
-                                <Check size={10} /> Stämmer
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full">
-                                <AlertTriangle size={10} className="text-amber-600" /> Behöver ändras
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+
+            {/* Right: Saras allmänna anteckningar & mail (disabled / kommer snart) */}
+            <section className="bg-white border border-ink/8 rounded-[2rem] p-6 md:p-8 space-y-5 flex flex-col justify-between shadow-xs">
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <h3 className="text-base font-bold text-ink">Saras Önskemålslogg & Anteckningar</h3>
+                  <p className="text-xs text-ink-soft leading-relaxed">
+                    Skriv ner allmänna önskemål eller förändringsbehov som inte ryms i reglerna ovan. Allt sparas automatiskt lokalt hos dig.
+                  </p>
+                </div>
+
+                <textarea
+                  value={saraNotes}
+                  onChange={(e) => updateNotes(e.target.value)}
+                  placeholder="Skriv dina allmänna önskemål och anteckningar här... (dessa sparas automatiskt)"
+                  className="w-full text-xs p-3 border border-ink/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-terracotta/40 bg-white min-h-[120px]"
+                />
               </div>
-            )}
-          </section>
+
+              {/* Greyed out email reporting segment */}
+              <div className="bg-ink/5 border border-ink/10 rounded-2xl p-4 space-y-3 opacity-60">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                    Kommer snart
+                  </span>
+                  <span className="text-xs font-bold text-ink flex items-center gap-1">
+                    📧 E-postrapportering till Jimmy
+                  </span>
+                </div>
+                <p className="text-[10px] text-ink-soft leading-relaxed">
+                  I nästa steg kommer du kunna skicka denna logg med ett klick direkt till Jimmys e-post. Just nu är funktionen inaktiverad men synlig.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    disabled
+                    value="jimmy.schema@toreboda.se"
+                    className="flex-1 bg-ink/10 text-xs px-3 py-2 border border-ink/10 rounded-xl text-ink-soft cursor-not-allowed select-none font-mono"
+                  />
+                  <button
+                    disabled
+                    className="bg-ink/20 text-ink-soft/70 border border-ink/10 text-xs font-bold px-3 py-2 rounded-xl cursor-not-allowed select-none"
+                  >
+                    Skicka e-post
+                  </button>
+                </div>
+              </div>
+            </section>
+
+          </div>
 
           {/* ── Footer ── */}
           <footer className="pt-6 border-t border-black/5 text-center flex flex-col sm:flex-row items-center justify-between gap-4">

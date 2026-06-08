@@ -188,6 +188,25 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* ── Systembeskrivning Banner ── */}
+        <div className="bg-white/60 backdrop-blur-md border border-ink/8 rounded-2xl p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+          <div className="space-y-1">
+            <h2 className="text-sm font-bold text-ink flex items-center gap-2">
+              <Scale size={16} className="text-terracotta" />
+              Sintari Systemguide & Regelspecifikation
+            </h2>
+            <p className="text-xs text-ink-soft leading-relaxed max-w-xl">
+              Sammanställning av allt vi har byggt, timräkning för heltid och deltid, samt de hårda lagreglerna (dygnsvila, veckovila) och de mjuka verksamhetsreglerna (önskemålskrockar, dagsansvarig, planerare). Visa denna sida för Sara under er genomgång.
+            </p>
+          </div>
+          <Link 
+            href="/systembeskrivning" 
+            className="bg-terracotta hover:bg-clay text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-1.5 shrink-0 cursor-pointer"
+          >
+            Öppna specifikationen →
+          </Link>
+        </div>
+
         {/* ── Gruppceller ── */}
         {loading ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
