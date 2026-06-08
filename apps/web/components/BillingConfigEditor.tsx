@@ -175,7 +175,7 @@ export function BillingConfigEditor() {
                 }
                 e.target.value = "";
               }}
-              className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40 transition-shadow text-ink cursor-pointer"
+              className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40 transition-shadow text-ink cursor-pointer"
             >
               <option value="">-- Välj din kommun för att fylla i organisationsuppgifter --</option>
               {MUNICIPALITIES.map(m => (
@@ -204,7 +204,7 @@ export function BillingConfigEditor() {
                   setValidationErrors({ ...validationErrors, org_name: "" });
                 }
               }}
-              className={`w-full bg-white border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40 transition-shadow ${
+              className={`w-full bg-white border rounded-xl px-3 py-2 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40 transition-shadow ${
                 validationErrors.org_name ? "border-red-300" : "border-gray-200"
               }`}
               placeholder="Töreboda Kommun"
@@ -229,7 +229,7 @@ export function BillingConfigEditor() {
                   setValidationErrors({ ...validationErrors, org_number: "" });
                 }
               }}
-              className={`w-full bg-white border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40 transition-shadow ${
+              className={`w-full bg-white border rounded-xl px-3 py-2 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40 transition-shadow ${
                 validationErrors.org_number ? "border-red-300" : "border-gray-200"
               }`}
               placeholder="212000-1234"
@@ -262,7 +262,7 @@ export function BillingConfigEditor() {
                   setValidationErrors({ ...validationErrors, peppol_id: "" });
                 }
               }}
-              className={`w-full bg-white border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40 transition-shadow ${
+              className={`w-full bg-white border rounded-xl px-3 py-2 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40 transition-shadow ${
                 validationErrors.peppol_id ? "border-red-300" : "border-gray-200"
               }`}
               placeholder="0007:2120001234"
@@ -290,7 +290,7 @@ export function BillingConfigEditor() {
               type="text"
               value={settings.zz_reference ?? ""}
               onChange={(e) => setSettings({ ...settings, zz_reference: e.target.value })}
-              className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40 transition-shadow"
+              className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40 transition-shadow"
               placeholder="ZZ12345"
             />
           </div>
@@ -310,7 +310,7 @@ export function BillingConfigEditor() {
                   setValidationErrors({ ...validationErrors, invoice_email: "" });
                 }
               }}
-              className={`w-full bg-white border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40 transition-shadow ${
+              className={`w-full bg-white border rounded-xl px-3 py-2 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40 transition-shadow ${
                 validationErrors.invoice_email ? "border-red-300" : "border-gray-200"
               }`}
               placeholder="ekonomi@kommun.se"

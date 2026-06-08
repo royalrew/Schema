@@ -210,7 +210,7 @@ export default function RollerPage() {
                 placeholder="Sök på namn…"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-2.5 border border-ink/10 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40 bg-white"
+                className="w-full pl-9 pr-3 py-2.5 border border-ink/10 rounded-xl text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40 bg-white"
               />
             </div>
             <div className="flex gap-1 flex-wrap">
@@ -271,7 +271,7 @@ export default function RollerPage() {
                             <select
                               value={user ? user.role : "none"}
                               onChange={e => handleSystemRoleChange(emp, user, e.target.value)}
-                              className={`text-xs border rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-terracotta/40 font-medium transition cursor-pointer ${
+                              className={`text-base md:text-xs border rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-terracotta/40 font-medium transition cursor-pointer ${
                                 user ? "bg-white border-ink/10 text-ink" : "bg-terracotta/5 border-terracotta/20 text-terracotta"
                               }`}
                             >
@@ -361,7 +361,7 @@ export default function RollerPage() {
                           <select
                             value={emp.contract_type}
                             onChange={e => handleAttributeChange(emp.id, { contract_type: e.target.value })}
-                            className="text-xs bg-cream/50 border border-ink/10 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-terracotta/40 text-ink cursor-pointer"
+                            className="text-base md:text-xs bg-cream/50 border border-ink/10 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-terracotta/40 text-ink cursor-pointer"
                           >
                             {CONTRACTS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                           </select>
@@ -416,7 +416,7 @@ export default function RollerPage() {
                   type="text"
                   readOnly
                   value={inviteUrl}
-                  className="flex-1 bg-transparent text-xs outline-none text-ink font-mono"
+                  className="flex-1 bg-transparent text-base md:text-xs outline-none text-ink font-mono"
                   onClick={e => (e.target as HTMLInputElement).select()}
                 />
                 <button

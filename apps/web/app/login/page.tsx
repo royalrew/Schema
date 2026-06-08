@@ -68,7 +68,7 @@ export default function LoginPage() {
                 autoFocus
                 autoComplete="username"
                 required
-                className="w-full bg-paper/60 border border-ink/12 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40 focus:border-terracotta transition"
+                className="w-full bg-paper/60 border border-ink/12 rounded-xl px-4 py-2.5 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40 focus:border-terracotta transition"
                 placeholder="ditt.namn"
               />
             </div>
@@ -81,7 +81,7 @@ export default function LoginPage() {
                 onChange={e => setPassword(e.target.value)}
                 autoComplete="current-password"
                 required
-                className="w-full bg-paper/60 border border-ink/12 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40 focus:border-terracotta transition"
+                className="w-full bg-paper/60 border border-ink/12 rounded-xl px-4 py-2.5 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40 focus:border-terracotta transition"
                 placeholder="••••••"
               />
             </div>

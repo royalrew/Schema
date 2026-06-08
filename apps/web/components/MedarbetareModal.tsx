@@ -86,7 +86,7 @@ export function MedarbetareModal({ employee, onSave, onClose }: Props) {
               onChange={e => setName(e.target.value)}
               placeholder="För- och efternamn"
               autoFocus
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40"
             />
           </div>
 
@@ -97,7 +97,7 @@ export function MedarbetareModal({ employee, onSave, onClose }: Props) {
             <select
               value={group}
               onChange={e => setGroup(e.target.value as Employee["group"])}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40"
             >
               {GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
             </select>
@@ -110,7 +110,7 @@ export function MedarbetareModal({ employee, onSave, onClose }: Props) {
             <select
               value={contractType}
               onChange={e => setContractType(e.target.value as Employee["contract_type"])}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40"
             >
               {CONTRACT_TYPES.map(c => (
                 <option key={c.value} value={c.value}>{c.label}</option>
@@ -129,7 +129,7 @@ export function MedarbetareModal({ employee, onSave, onClose }: Props) {
               value={percentage}
               onChange={e => setPercentage(Number(e.target.value))}
               placeholder="T.ex. 50, 75, 100"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40"
             />
           </div>
 

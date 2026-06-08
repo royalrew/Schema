@@ -137,7 +137,7 @@ export function FranvaroManager({ employee, onUpdate }: Props) {
                 <select
                   value={p.absence_type}
                   onChange={e => updatePeriod(p.id, { absence_type: e.target.value })}
-                  className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40"
+                  className="border border-gray-200 rounded-lg px-2 py-1.5 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40"
                 >
                   {ABSENCE_TYPES.map(t => (
                     <option key={t.value} value={t.value}>{t.label}</option>
@@ -150,7 +150,7 @@ export function FranvaroManager({ employee, onUpdate }: Props) {
                     type="date"
                     value={p.start_date}
                     onChange={e => updatePeriod(p.id, { start_date: e.target.value })}
-                    className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-terracotta/40"
+                    className="border border-gray-200 rounded-lg px-2 py-1.5 text-base md:text-sm font-mono focus:outline-none focus:ring-2 focus:ring-terracotta/40"
                   />
                   <span className="text-gray-300">–</span>
                   <input
@@ -158,7 +158,7 @@ export function FranvaroManager({ employee, onUpdate }: Props) {
                     value={p.end_date}
                     min={p.start_date}
                     onChange={e => updatePeriod(p.id, { end_date: e.target.value })}
-                    className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-terracotta/40"
+                    className="border border-gray-200 rounded-lg px-2 py-1.5 text-base md:text-sm font-mono focus:outline-none focus:ring-2 focus:ring-terracotta/40"
                   />
                 </div>
 

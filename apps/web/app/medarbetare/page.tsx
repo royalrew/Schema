@@ -154,7 +154,7 @@ export default function MedarbetarePage() {
               placeholder="Sök på namn…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40 bg-white"
+              className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40 bg-white"
             />
           </div>
           <div className="flex gap-1 flex-wrap">
