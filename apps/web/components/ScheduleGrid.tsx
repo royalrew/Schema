@@ -2,7 +2,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { format, getDaysInMonth, getDay } from "date-fns";
 import { sv } from "date-fns/locale";
-import { Loader2, Play, ChevronLeft, ChevronRight, LayoutGrid, Calendar, Settings, Printer, FileSpreadsheet, Users, ClipboardList, Scale } from "lucide-react";
+import { Loader2, Play, ChevronLeft, ChevronRight, LayoutGrid, Calendar, Settings, Printer, FileSpreadsheet, Users, ClipboardList } from "lucide-react";
 import Link from "next/link";
 import { DayCell } from "./DayCell";
 import { CalendarView } from "./CalendarView";
@@ -281,14 +281,6 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
             className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <Users size={14} /> Personal
-          </Link>
-
-          {/* Systembeskrivning */}
-          <Link
-            href="/systembeskrivning"
-            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <Scale size={14} /> Systembeskrivning
           </Link>
 
           {/* Inställningar */}

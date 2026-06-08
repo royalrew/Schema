@@ -2,7 +2,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { format, getDaysInMonth, getDay } from "date-fns";
 import { sv } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, ArrowLeft, Star, CalendarDays, Clock, UserCircle, LogOut, Scale } from "lucide-react";
+import { ChevronLeft, ChevronRight, ArrowLeft, Star, CalendarDays, Clock, UserCircle, LogOut } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { updateWishSchedule, fetchShiftConfigs, fetchSchedule, fetchPeriodInfo, fetchEmployee, updateWishes, type WishShiftEntry } from "@/lib/api";
@@ -201,9 +201,6 @@ export function PersonalCalendar({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <Link href="/systembeskrivning" className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-terracotta hover:bg-cream rounded-lg transition-colors cursor-pointer">
-            <Scale size={14} /> Systembeskrivning
-          </Link>
           <button onClick={() => setShowPasswordModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-terracotta hover:bg-cream rounded-lg transition-colors cursor-pointer">
             <UserCircle size={14} /> Byt lösenord
           </button>

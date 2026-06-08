@@ -437,7 +437,7 @@ export default function SystembeskrivningPage() {
   const percentReviewed = Math.round((reviewedCount / totalCount) * 100);
 
   return (
-    <AuthGuard requiredRole="personal">
+    <AuthGuard requiredRole="superadmin">
       <div className="bg-paper min-h-screen text-ink pb-24 relative overflow-hidden">
         {/* Background decorations */}
         <div className="absolute top-0 right-0 w-[400px] h-[400px] rounded-full bg-amber/10 blur-3xl pointer-events-none" />
