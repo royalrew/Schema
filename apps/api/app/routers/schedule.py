@@ -150,6 +150,82 @@ async def get_period_info(
     return PeriodInfo(phase=row.phase, has_schedule=bool(row.schedule), apt_date=row.apt_date, apt_time=row.apt_time, wish_deadline=row.wish_deadline, decisions=_parse_decisions(row.decisions))
 
 
+@router.get("/validate/{group}/{year}/{month}", response_model=ValidationResult)
+async def get_validation(
+    group: str, year: int, month: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRow = Depends(get_current_user),
+):
+    """Kör validering mot befintligt schema i DB utan att ändra något."""
+    if current_user.username.startswith("demo_"):
+        group = f"Granbacken ({current_user.username})"
+
+    period_stmt = select(SchedulePeriodRow).where(
+        SchedulePeriodRow.group_name == group,
+        SchedulePeriodRow.year == year,
+        SchedulePeriodRow.month == month,
+    )
+    period_row = (await db.execute(period_stmt)).scalar_one_or_none()
+    if not period_row or not period_row.schedule:
+        return ValidationResult(is_valid=True, errors=[])
+
+    emp_stmt = select(EmployeeRow).where(EmployeeRow.group_name == group)
+    emp_rows = (await db.execute(emp_stmt)).scalars().all()
+    employees = [_row_to_employee(r) for r in emp_rows]
+
+    krav_stmt = select(BemanningskravRow).where(
+        BemanningskravRow.group_name == group,
+        BemanningskravRow.year == year,
+        BemanningskravRow.month == month,
+    )
+    krav_row = (await db.execute(krav_stmt)).scalar_one_or_none()
+    krav = []
+    if krav_row and krav_row.requirements:
+        krav = [
+            Bemanningskrav(
+                group=Group(k["group"]),
+                date=date.fromisoformat(k["date"]),
+                fm_heads=k.get("fm_heads", 2),
+                em_heads=k.get("em_heads", 0),
+                kval_heads=k.get("kval_heads", 2),
+                natt_heads=k.get("natt_heads", 0),
+            )
+            for k in krav_row.requirements
+        ]
+    else:
+        tmpl_row = (await db.execute(
+            select(StaffingTemplateRow).where(StaffingTemplateRow.group_name == group)
+        )).scalar_one_or_none()
+        if tmpl_row and tmpl_row.per_weekday:
+            from app.routers.staffing import DayKrav, StaffingTemplate, _krav_from_template
+            tmpl = StaffingTemplate(
+                group_name=group,
+                per_weekday=[DayKrav(**d) for d in tmpl_row.per_weekday],
+            )
+            krav = _krav_from_template(tmpl, Group(group), year, month)
+        else:
+            krav = _default_krav(Group(group), year, month)
+
+    own_days = [_dict_to_schedule_day(sd) for sd in period_row.schedule]
+
+    other_stmt = select(SchedulePeriodRow).where(
+        SchedulePeriodRow.group_name != group,
+        SchedulePeriodRow.year == year,
+        SchedulePeriodRow.month == month,
+    )
+    other_rows = (await db.execute(other_stmt)).scalars().all()
+    borrowed_days = []
+    for r in other_rows:
+        if not r.schedule:
+            continue
+        for sd_dict in r.schedule:
+            sd = _dict_to_schedule_day(sd_dict)
+            if sd.assigned_group == group:
+                borrowed_days.append(sd)
+
+    return validate_schedule(own_days + borrowed_days, employees, krav)
+
+
 @router.post("/period/{group}/{year}/{month}/phase", response_model=PeriodInfo)
 async def advance_phase(
     group: str, year: int, month: int,

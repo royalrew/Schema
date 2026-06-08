@@ -259,6 +259,16 @@ export async function fetchPeriodInfo(
   return res.json();
 }
 
+export async function fetchValidation(
+  group: string,
+  year: number,
+  month: number
+): Promise<import("./types").ValidationResult | null> {
+  const res = await apiFetch(`${BASE}/api/validate/${encodeURIComponent(group)}/${year}/${month}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export async function setWishDeadline(
   group: string, year: number, month: number,
   wishDeadline: string | null,

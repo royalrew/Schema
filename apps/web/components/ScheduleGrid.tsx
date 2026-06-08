@@ -12,7 +12,7 @@ import { ValidationPanel } from "./ValidationPanel";
 import { PhaseBar } from "./PhaseBar";
 import { AIModal } from "./AIModal";
 import { BeslutsloggPanel } from "./BeslutsloggPanel";
-import { generateSchedule, fetchEmployees, fetchSchedule, fetchPeriodInfo, advancePhase, updateWishes, setApt, setWishDeadline, fetchShiftConfigs, updateScheduleDay, type UpdateScheduleDayData } from "@/lib/api";
+import { generateSchedule, fetchEmployees, fetchSchedule, fetchPeriodInfo, fetchValidation, advancePhase, updateWishes, setApt, setWishDeadline, fetchShiftConfigs, updateScheduleDay, type UpdateScheduleDayData } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { ScheduleDayEditor, type ShiftPreset } from "./ScheduleDayEditor";
 import type { Employee, ScheduleDay, ValidationResult, ValidationError, Phase } from "@/lib/types";
@@ -87,8 +87,15 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
           setAptTimeState(periodInfo.apt_time ?? null);
           setWishDeadlineState(periodInfo.wish_deadline ?? null);
           setDecisions(periodInfo.decisions ?? []);
-          setValidation(null);
           setStats(null);
+          // Hämta validering om schemat redan finns i correction-fas
+          if (periodInfo.phase === "correction" && sched.length > 0) {
+            fetchValidation(group, year, month).then(v => {
+              if (!cancelled) setValidation(v);
+            }).catch(() => {});
+          } else {
+            setValidation(null);
+          }
         }
       } catch {
         // Tyst fel — tom lista visas
@@ -360,10 +367,10 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
               month={month}
               validation={validation}
               onScheduleUpdated={async () => {
-                const [sched] = await Promise.all([
-                  fetchSchedule(group, year, month).catch(() => []),
-                ]);
+                const sched = await fetchSchedule(group, year, month).catch(() => []);
                 setSchedule(sched);
+                const v = await fetchValidation(group, year, month).catch(() => null);
+                setValidation(v);
               }}
             />
           )}
