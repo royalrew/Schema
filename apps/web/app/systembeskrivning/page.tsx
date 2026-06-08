@@ -762,7 +762,7 @@ export default function SystembeskrivningPage() {
                   <input
                     type="email"
                     disabled
-                    value="jimmy.schema@toreboda.se"
+                    value="jimmy@sintari.se"
                     className="flex-1 bg-ink/10 text-xs px-3 py-2 border border-ink/10 rounded-xl text-ink-soft cursor-not-allowed select-none font-mono"
                   />
                   <button
