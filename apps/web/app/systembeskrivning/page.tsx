@@ -209,12 +209,13 @@ const SPECIFICATIONS: SpecItem[] = [
   {
     id: "hours-balance-threshold",
     category: "hours",
-    title: "Timbalansgräns ±15 timmar per månad",
-    desc: "Efter generering kontrollerar systemet att varje medarbetares faktiska schematimmar ligger inom ±15 timmar från månadsmålet. Avvikelser utanför detta intervall flaggas som mjuka varningar.",
+    title: "Varning vid stor timavvikelse i schemat",
+    desc: "När schemat är genererat räknar systemet ihop varje persons schemalagda timmar och jämför med vad de ska jobba enligt sin tjänstgöringsgrad. Om det skiljer mer än 15 timmar åt något håll slår systemet larm.",
     bullets: [
-      "Underskott > 15 h: systemet varnar och AI-lagret föreslår att lägga till OBOKAD-tid på lediga dagar.",
-      "Överskott > 15 h: systemet varnar så att planeraren kan justera manuellt.",
-      "Gränsen på 15 timmar — är det rimligt för er verksamhet, eller ska den vara högre/lägre?"
+      "Exempel: En person ska jobba 159 timmar i juni men schemat ger henne bara 140 timmar — det är 19 timmar för lite och systemet flaggar detta direkt.",
+      "Systemet föreslår då automatiskt att lägga in 'obokad tid' (administrationstid) på hennes lediga dagar för att täcka upp.",
+      "Om schemat istället ger henne 178 timmar — 19 timmar för mycket — varnar systemet så att du kan justera manuellt.",
+      "Fråga till Sara: Är 15 timmar rätt gräns, eller känns det för snävt/för brett utifrån hur ni brukar ligga?"
     ]
   },
 
