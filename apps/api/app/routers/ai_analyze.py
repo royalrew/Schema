@@ -15,15 +15,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from openai import AsyncOpenAI
 
 from app.database import get_db
-from app.db_models import EmployeeRow, SchedulePeriodRow, UserRow
+from app.db_models import (
+    EmployeeRow, SchedulePeriodRow, UserRow, BemanningskravRow, StaffingTemplateRow,
+)
 from app.auth_utils import require_admin_or_schemaansvarig
 from app.engine.schemas import (
     Employee, ContractType, Group, Absence, AbsenceType,
-    SoftConstraint, WishShiftEntry,
+    SoftConstraint, WishShiftEntry, Bemanningskrav,
 )
 from app.engine.solver import validate_schedule
+from app.engine.planner import plan_fixes, apply_steps
 from app.routers.schedule import _row_to_employee, _dict_to_schedule_day
 from app.routers.autocorrect import _simulate_dag_tidig, _simulate_timbalans
+from app.routers.staffing import _default_krav, _krav_from_template
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 STOCKHOLM = ZoneInfo("Europe/Stockholm")
@@ -274,3 +278,252 @@ async def apply_fix(
         return ApplyFixResponse(ok=True, message=f"{added:.0f} h OBOKAD-tid tillagd för {emp_name}.")
 
     return ApplyFixResponse(ok=False, message=f"Fix-typ '{req.fix_type}' stöds inte ännu.")
+
+
+# ── Flerstegs-åtgärdsplanerare ───────────────────────────────────────────────
+
+async def _load_krav(db: AsyncSession, group: str, year: int, month: int) -> list[Bemanningskrav]:
+    """Laddar bemanningskrav för gruppen (samma logik som schedule.get_validation)."""
+    krav_row = (await db.execute(
+        select(BemanningskravRow).where(
+            BemanningskravRow.group_name == group,
+            BemanningskravRow.year == year,
+            BemanningskravRow.month == month,
+        )
+    )).scalar_one_or_none()
+    if krav_row and krav_row.requirements:
+        return [
+            Bemanningskrav(
+                group=Group(k["group"]),
+                date=date.fromisoformat(k["date"]),
+                fm_heads=k.get("fm_heads", 2),
+                em_heads=k.get("em_heads", 0),
+                kval_heads=k.get("kval_heads", 2),
+                natt_heads=k.get("natt_heads", 0),
+            )
+            for k in krav_row.requirements
+        ]
+    tmpl_row = (await db.execute(
+        select(StaffingTemplateRow).where(StaffingTemplateRow.group_name == group)
+    )).scalar_one_or_none()
+    if tmpl_row and tmpl_row.per_weekday:
+        from app.routers.staffing import DayKrav, StaffingTemplate
+        tmpl = StaffingTemplate(
+            group_name=group,
+            per_weekday=[DayKrav(**d) for d in tmpl_row.per_weekday],
+        )
+        return _krav_from_template(tmpl, Group(group), year, month)
+    return _default_krav(Group(group), year, month)
+
+
+class PlanFixesRequest(BaseModel):
+    group: str
+    year: int
+    month: int
+
+
+class FixStep(BaseModel):
+    step_id: str
+    op: str | None = None
+    employee_id: str | None = None
+    employee_name: str | None = None
+    date: str | None = None
+    slot: str | None = None
+    added_hours: float | None = None
+    description: str
+    resolves_rule: str
+
+
+class UnresolvedItem(BaseModel):
+    rule_name: str
+    date: str
+    message: str
+
+
+class FixPlanResponse(BaseModel):
+    steps: list[FixStep]
+    warnings_before: int
+    warnings_after_if_all: int
+    new_hard_errors: int
+    unresolved: list[UnresolvedItem]
+    explanation: str
+
+
+class ApplyPlanRequest(BaseModel):
+    group: str
+    year: int
+    month: int
+    steps: list[FixStep]
+
+
+class ApplyPlanResponse(BaseModel):
+    ok: bool
+    applied_count: int
+    warnings_after: int
+    hard_errors_after: int
+
+
+def _soft_count(validation) -> int:
+    return sum(1 for e in validation.errors if e.severity == "soft")
+
+
+def _hard_count(validation) -> int:
+    return sum(1 for e in validation.errors if e.severity == "hard")
+
+
+def _fallback_explanation(steps: list[dict], resolved: int, unresolved: list[dict]) -> str:
+    if not steps and not unresolved:
+        return "Schemat har inga åtgärdbara varningar — allt ser bra ut."
+    cat = {"dag_tidig": 0, "kval_lang": 0, "timbalans": 0, "bemanning": 0}
+    for s in steps:
+        cat[s.get("op", "")] = cat.get(s.get("op", ""), 0) + 1
+    parts = []
+    if cat["dag_tidig"]:
+        parts.append(f"{cat['dag_tidig']} dag(ar) får 06:45-täckning")
+    if cat["kval_lang"]:
+        parts.append(f"{cat['kval_lang']} kvällspass förlängs till 21:30")
+    if cat["bemanning"]:
+        parts.append(f"{cat['bemanning']} bemanningshål täcks med obokad tid")
+    if cat["timbalans"]:
+        parts.append(f"{cat['timbalans']} personer får sina kontraktstimmar fyllda")
+    body = ", ".join(parts) if parts else "inga ändringar behövs"
+    msg = f"Planen löser {resolved} varningar i {len(steps)} steg utan att skapa nya regelbrott: {body}."
+    if unresolved:
+        msg += f" {len(unresolved)} varningar kvarstår och kräver vikarie eller manuell hantering."
+    return msg
+
+
+async def _ai_plan_explanation(steps: list[dict], resolved: int, unresolved: list[dict]) -> str:
+    """Holistisk svensk förklaring av planen. Faller tillbaka på mall utan OpenAI."""
+    fallback = _fallback_explanation(steps, resolved, unresolved)
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key or not steps:
+        return fallback
+
+    cat: dict[str, int] = {}
+    for s in steps:
+        cat[s.get("op", "")] = cat.get(s.get("op", ""), 0) + 1
+    context = (
+        f"Antal steg: {len(steps)}. Lösta varningar: {resolved}. "
+        f"Kvarstående (kräver vikarie/manuellt): {len(unresolved)}. "
+        f"Stegtyper: {cat}."
+    )
+    prompt = (
+        "Du är ett schemaläggningssystem för Töreboda hemvård. Förklara på enkel, "
+        "tydlig svenska för en chef vad denna åtgärdsplan gör och varför den är säker "
+        "(inga nya regelbrott). Max 3 meningar, ingen teknisk jargong.\n\n"
+        f"{context}\n\n"
+        'Svara ENBART med JSON: {"explanation": "..."}'
+    )
+    try:
+        client = AsyncOpenAI(api_key=api_key)
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+            max_tokens=250,
+            response_format={"type": "json_object"},
+        )
+        raw = response.choices[0].message.content or "{}"
+        return json.loads(raw).get("explanation", fallback)
+    except Exception:
+        return fallback
+
+
+@router.post("/plan-fixes", response_model=FixPlanResponse)
+async def plan_fixes_endpoint(
+    req: PlanFixesRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRow = Depends(require_admin_or_schemaansvarig),
+):
+    """Bygger en deterministisk flerstegsplan som löser varningar utan att spara."""
+    if current_user.username.startswith("demo_"):
+        req.group = f"Granbacken ({current_user.username})"
+
+    period_row = (await db.execute(
+        select(SchedulePeriodRow).where(
+            SchedulePeriodRow.group_name == req.group,
+            SchedulePeriodRow.year == req.year,
+            SchedulePeriodRow.month == req.month,
+        )
+    )).scalar_one_or_none()
+    if not period_row or not period_row.schedule:
+        raise HTTPException(status_code=404, detail="Inget schema genererat för denna period")
+
+    emp_rows = (await db.execute(
+        select(EmployeeRow).where(EmployeeRow.group_name == req.group)
+    )).scalars().all()
+    employees = [_row_to_employee(r) for r in emp_rows]
+    krav = await _load_krav(db, req.group, req.year, req.month)
+
+    schedule = list(period_row.schedule)
+    before_val = validate_schedule([_dict_to_schedule_day(sd) for sd in schedule], employees, krav)
+
+    steps, final_val, unresolved = plan_fixes(schedule, employees, krav, req.year, req.month)
+
+    warnings_before = _soft_count(before_val)
+    warnings_after = _soft_count(final_val)
+    resolved = max(0, warnings_before - warnings_after)
+    new_hard = max(0, _hard_count(final_val) - _hard_count(before_val))
+
+    explanation = await _ai_plan_explanation(steps, resolved, unresolved)
+
+    return FixPlanResponse(
+        steps=[FixStep(**s) for s in steps],
+        warnings_before=warnings_before,
+        warnings_after_if_all=warnings_after,
+        new_hard_errors=new_hard,
+        unresolved=[UnresolvedItem(**u) for u in unresolved],
+        explanation=explanation,
+    )
+
+
+@router.post("/apply-plan", response_model=ApplyPlanResponse)
+async def apply_plan_endpoint(
+    req: ApplyPlanRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRow = Depends(require_admin_or_schemaansvarig),
+):
+    """Spelar upp de valda planstegen, validerar och sparar i ett enda steg."""
+    if current_user.username.startswith("demo_"):
+        req.group = f"Granbacken ({current_user.username})"
+
+    period_row = (await db.execute(
+        select(SchedulePeriodRow).where(
+            SchedulePeriodRow.group_name == req.group,
+            SchedulePeriodRow.year == req.year,
+            SchedulePeriodRow.month == req.month,
+        )
+    )).scalar_one_or_none()
+    if not period_row or not period_row.schedule:
+        raise HTTPException(status_code=404, detail="Inget schema att uppdatera")
+
+    emp_rows = (await db.execute(
+        select(EmployeeRow).where(EmployeeRow.group_name == req.group)
+    )).scalars().all()
+    employees = [_row_to_employee(r) for r in emp_rows]
+    krav = await _load_krav(db, req.group, req.year, req.month)
+
+    schedule = list(period_row.schedule)
+    step_dicts = [s.model_dump() for s in req.steps]
+    new_schedule, applied = apply_steps(schedule, employees, krav, req.year, req.month, step_dicts)
+
+    final_val = validate_schedule([_dict_to_schedule_day(sd) for sd in new_schedule], employees, krav)
+
+    timestamp_str = datetime.now(STOCKHOLM).strftime("%Y-%m-%d %H:%M")
+    log_entry = (
+        f"[{timestamp_str}] AI-åtgärdsplan godkänd av {current_user.full_name or current_user.username}: "
+        f"{applied} steg tillämpade i ett svep (flerstegsplanerare)."
+    )
+    current_decisions = list(period_row.decisions or [])
+    current_decisions.append(log_entry)
+    period_row.decisions = current_decisions
+    period_row.schedule = new_schedule
+    await db.commit()
+
+    return ApplyPlanResponse(
+        ok=True,
+        applied_count=applied,
+        warnings_after=_soft_count(final_val),
+        hard_errors_after=_hard_count(final_val),
+    )

@@ -17,7 +17,7 @@ from app.auth_utils import require_admin_or_schemaansvarig
 from app.engine.schemas import (
     Employee, ContractType, Group, Absence, AbsenceType,
     SoftConstraint, WishShiftEntry, Shift, ShiftSegment, ShiftType,
-    CONTRACT_RULES,
+    Bemanningskrav, CONTRACT_RULES,
 )
 from app.engine.solver import validate_schedule
 from app.routers.schedule import _row_to_employee, _dict_to_schedule_day, _schedule_day_to_dict
@@ -70,6 +70,9 @@ def _simulate_dag_tidig(
             if _is_weekend(d):
                 helger_count[sd["employee_id"]] = helger_count.get(sd["employee_id"], 0) + 1
 
+    start_dt = datetime(target_date.year, target_date.month, target_date.day, 6, 45, tzinfo=STOCKHOLM)
+    end_dt = datetime(target_date.year, target_date.month, target_date.day, 16, 0, tzinfo=STOCKHOLM)
+
     if force_employee_id:
         candidates = [e for e in employees if e.id == force_employee_id]
     else:
@@ -87,15 +90,17 @@ def _simulate_dag_tidig(
             is_we = _is_weekend(target_date)
             if is_we and helger_count.get(emp.id, 0) >= 3:
                 continue
+            # Hoppa kandidater som skulle bryta 11h dygnsvila mot grann-pass
+            if _violates_dygnsvila(schedule, sched_idx, emp.id, target_date, start_dt, end_dt):
+                continue
             candidates.append(emp)
-        candidates.sort(key=lambda e: helger_count.get(e.id, 0))
+        # Stabil ordning: minst helger först, sedan id för determinism
+        candidates.sort(key=lambda e: (helger_count.get(e.id, 0), e.id))
 
     if not candidates:
         return schedule, None
 
     chosen = candidates[0]
-    start_dt = datetime(target_date.year, target_date.month, target_date.day, 6, 45, tzinfo=STOCKHOLM)
-    end_dt = datetime(target_date.year, target_date.month, target_date.day, 16, 0, tzinfo=STOCKHOLM)
     shift_data = {
         "shift_type": "dag_tidig",
         "segments": [{"start_time": start_dt.isoformat(), "end_time": end_dt.isoformat()}],
@@ -110,6 +115,67 @@ def _simulate_dag_tidig(
         schedule.append({"date": datestr, "employee_id": chosen.id, "shift": shift_data, "absence": None})
 
     return schedule, chosen.id
+
+
+def _simulate_kval_lang(
+    schedule: list[dict],
+    target_date: date,
+    employees: list[Employee],
+    force_employee_id: str | None = None,
+) -> tuple[list[dict], str | None]:
+    """
+    Säkerställer 21:30-täckning genom att förlänga ett befintligt KVAL_KORT-pass
+    (13:45–20:00) till KVAL_LANG (13:45–21:30). Föredrar att förlänga ett pass
+    framför att lägga till en ny person, så att inte bemanningen ökar i onödan.
+    Returnerar (modifierat schema, vald emp_id) eller (oförändrat schema, None).
+    """
+    schedule = copy.deepcopy(schedule)
+    sched_idx: dict[tuple, int] = {(sd["employee_id"], sd["date"]): i for i, sd in enumerate(schedule)}
+    datestr = target_date.isoformat()
+    emp_ids = {e.id for e in employees}
+
+    # Redan täckt?
+    already = any(
+        (schedule[i].get("shift") or {}).get("shift_type") == "kval_lang"
+        for (eid, ds), i in sched_idx.items() if ds == datestr and eid in emp_ids
+    )
+    if already:
+        return schedule, None
+
+    end_dt = datetime(target_date.year, target_date.month, target_date.day, 21, 30, tzinfo=STOCKHOLM)
+
+    if force_employee_id:
+        cand_ids = [force_employee_id]
+    else:
+        cand_ids = []
+        for e in employees:
+            i = sched_idx.get((e.id, datestr))
+            if i is None:
+                continue
+            sh = schedule[i].get("shift") or {}
+            if sh.get("shift_type") != "kval_kort" or not sh.get("segments"):
+                continue
+            start_dt = datetime.fromisoformat(sh["segments"][0]["start_time"])
+            # Förlängd sluttid får inte bryta dygnsvila mot dagen efter
+            if _violates_dygnsvila(schedule, sched_idx, e.id, target_date, start_dt, end_dt):
+                continue
+            cand_ids.append(e.id)
+        cand_ids.sort()  # stabil ordning för determinism
+
+    if not cand_ids:
+        return schedule, None
+
+    chosen_id = cand_ids[0]
+    i = sched_idx[(chosen_id, datestr)]
+    sd = schedule[i]
+    sh = dict(sd["shift"])
+    seg0 = dict(sh["segments"][0])
+    seg0["end_time"] = end_dt.isoformat()
+    sh["shift_type"] = "kval_lang"
+    sh["segments"] = [seg0]
+    sh["note"] = "Autokorrigerad — 21:30-täckning"
+    schedule[i] = {**sd, "shift": sh}
+    return schedule, chosen_id
 
 
 def _emp_actual_hours(schedule: list[dict], emp_id: str) -> float:
@@ -238,6 +304,112 @@ def _simulate_timbalans(
         added += block_h
 
     return schedule, added
+
+
+# Slot → (passtyp, starttimme, startminut, sluttimme, slutminut) för bemanningsfix
+_SLOT_TO_SHIFT = {
+    "fm":   ("dag",       7, 0, 16, 0),
+    "kval": ("kval_kort", 13, 45, 20, 0),
+}
+# Passtyp → bemanningsslot (spegel av _SHIFT_TO_SLOT i solver.py)
+_SHIFT_TO_SLOT_LOCAL = {
+    "dag_tidig": "fm", "dag": "fm", "delad_tur": "em",
+    "kval_kort": "kval", "kval_lang": "kval", "apt": "kval", "natt": "natt",
+}
+
+
+def _worst_understaffed_slot(
+    schedule: list[dict], krav: list[Bemanningskrav], target_date: date,
+) -> str | None:
+    """Returnerar den slot (fm/em/kval/natt) som har störst underbemanning en dag, annars None."""
+    k = next((x for x in krav if x.date == target_date), None)
+    if k is None:
+        return None
+    datestr = target_date.isoformat()
+    have = {"fm": 0, "em": 0, "kval": 0, "natt": 0}
+    for sd in schedule:
+        if sd["date"] != datestr:
+            continue
+        sh = sd.get("shift")
+        if not sh:
+            continue
+        slot = _SHIFT_TO_SLOT_LOCAL.get(sh.get("shift_type"))
+        if slot:
+            have[slot] += 1
+    need = {"fm": k.fm_heads, "em": k.em_heads, "kval": k.kval_heads, "natt": k.natt_heads}
+    deficits = {s: need[s] - have[s] for s in need}
+    worst = max(deficits, key=lambda s: deficits[s])
+    return worst if deficits[worst] > 0 else None
+
+
+def _simulate_bemanning(
+    schedule: list[dict],
+    target_date: date,
+    employees: list[Employee],
+    krav: list[Bemanningskrav],
+    force_employee_id: str | None = None,
+    slot: str | None = None,
+) -> tuple[list[dict], str | None]:
+    """
+    Täcker underbemanning en dag genom att omvandla någons OBOKAD-pass (buffert)
+    till ett riktigt pass i den slot som saknar personal. Detta speglar hur en
+    obokad tur tas i anspråk för att täcka ett hål. Returnerar (modifierat schema,
+    vald emp_id) eller (oförändrat schema, None) om ingen obokad finns att omvandla
+    (→ varningen rapporteras som olöst, kräver vikarie).
+    """
+    schedule = copy.deepcopy(schedule)
+    datestr = target_date.isoformat()
+    sched_idx: dict[tuple, int] = {(sd["employee_id"], sd["date"]): i for i, sd in enumerate(schedule)}
+
+    short_slot = slot or _worst_understaffed_slot(schedule, krav, target_date)
+    if short_slot not in _SLOT_TO_SHIFT:
+        return schedule, None  # em/natt täcks inte via obokad-omvandling
+
+    shift_type, sh, sm, eh, em = _SLOT_TO_SHIFT[short_slot]
+    start_dt = datetime(target_date.year, target_date.month, target_date.day, sh, sm, tzinfo=STOCKHOLM)
+    end_dt = datetime(target_date.year, target_date.month, target_date.day, eh, em, tzinfo=STOCKHOLM)
+
+    def _eligible(e: Employee) -> bool:
+        rules = CONTRACT_RULES.get(e.contract_type, {})
+        if target_date.weekday() not in rules.get("allowed_weekdays", list(range(7))):
+            return False
+        if shift_type in ("kval_kort", "kval_lang") and getattr(e, "is_dagansvarig", False):
+            return False  # dagansvarig aldrig kväll
+        if shift_type == "dag" and e.contract_type == ContractType.KVAL:
+            return False  # kvällskontrakt aldrig dag
+        return True
+
+    if force_employee_id:
+        cand_ids = [force_employee_id]
+    else:
+        cand_ids = []
+        for e in employees:
+            i = sched_idx.get((e.id, datestr))
+            if i is None:
+                continue
+            sh_obj = schedule[i].get("shift") or {}
+            if sh_obj.get("shift_type") != "obokad":
+                continue
+            if not _eligible(e):
+                continue
+            if _violates_dygnsvila(schedule, sched_idx, e.id, target_date, start_dt, end_dt):
+                continue
+            cand_ids.append(e.id)
+        cand_ids.sort()  # stabil ordning för determinism
+
+    if not cand_ids:
+        return schedule, None
+
+    chosen_id = cand_ids[0]
+    i = sched_idx[(chosen_id, datestr)]
+    shift_data = {
+        "shift_type": shift_type,
+        "segments": [{"start_time": start_dt.isoformat(), "end_time": end_dt.isoformat()}],
+        "is_unbooked": False,
+        "note": f"Autokorrigerad — täcker {short_slot.upper()}-bemanning (omvandlad obokad)",
+    }
+    schedule[i] = {**schedule[i], "shift": shift_data}
+    return schedule, chosen_id
 
 
 @router.post("/{group}/{year}/{month}/dag-tidig", response_model=FixResult)

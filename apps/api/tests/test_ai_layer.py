@@ -21,9 +21,14 @@ import pytest
 from app.engine.schemas import (
     Employee, ContractType, Group, Absence, AbsenceType,
     ScheduleDay, Shift, ShiftSegment, ShiftType, ValidationErrorDetail,
+    Bemanningskrav,
 )
 from app.engine.solver import validate_schedule
-from app.routers.autocorrect import _simulate_dag_tidig, _simulate_timbalans, _emp_actual_hours
+from app.routers.autocorrect import (
+    _simulate_dag_tidig, _simulate_timbalans, _emp_actual_hours,
+    _simulate_kval_lang, _simulate_bemanning,
+)
+from app.engine.planner import plan_fixes, apply_steps
 
 STOCKHOLM = ZoneInfo("Europe/Stockholm")
 
@@ -398,3 +403,166 @@ class TestSimulateTimbalans:
 
         _simulate_timbalans(schedule, emp.id, [emp], 2026, 6)
         assert schedule == snapshot, "Originalschemat ska vara oförändrat"
+
+
+# =============================================================================
+# 10. Flerstegsplaneraren (plan_fixes / apply_steps)
+# =============================================================================
+
+def _hard(val) -> int:
+    return sum(1 for e in val.errors if e.severity == "hard")
+
+
+def _count_rule(val, rule: str) -> int:
+    return sum(1 for e in val.errors if e.rule_name == rule)
+
+
+def _month_schedule(emps: list[Employee], shift_for) -> list[dict]:
+    """Bygger 30 dagar × alla emps som dict-schema. shift_for(emp, d) -> Shift|None."""
+    out: list[dict] = []
+    for day_n in range(1, 31):
+        d = date(2026, 6, day_n)
+        for e in emps:
+            out.append(_sd(e.id, d, shift_for(e, d)))
+    return out
+
+
+class TestPlanner:
+
+    def test_konvergerar_och_loser_tackning(self):
+        """En grupp utan 06:45-täckning ska få färre täckningsvarningar utan nya hårda fel."""
+        emps = [_emp(i) for i in (1, 2, 3)]  # tre VARIERANDE i Norra
+        schedule = _month_schedule(emps, lambda e, d: None)  # alla lediga
+
+        before = validate_schedule([ScheduleDay.model_validate(s) for s in schedule], emps)
+        cov_before = _count_rule(before, "dag_tidig_saknas")
+        hard_before = _hard(before)
+
+        steps, final_val, unresolved = plan_fixes(schedule, emps, None, 2026, 6)
+
+        assert len(steps) > 0, "Planeraren ska producera steg"
+        assert _count_rule(final_val, "dag_tidig_saknas") < cov_before, "Täckningsvarningar ska minska"
+        assert _hard(final_val) <= hard_before, "Får aldrig skapa fler hårda fel"
+
+    def test_aldrig_fler_harda_fel_dygnsvila(self):
+        """
+        Naiv 06:45-täckning dagen efter ett 21:30-pass skulle bryta dygnsvila.
+        Planeraren ska välja annan person så inga hårda fel uppstår.
+        """
+        e1, e2, e3 = _emp(1), _emp(2), _emp(3)
+        kval_day = date(2026, 6, 9)  # E1 jobbar kväll-lång denna dag
+
+        def shift_for(e, d):
+            if e.id == e1.id and d == kval_day:
+                return _shift(d, 13, 21, ShiftType.KVAL_LANG)  # slutar sent (förenklat 21:00)
+            return None
+
+        schedule = _month_schedule([e1, e2, e3], shift_for)
+
+        before = validate_schedule([ScheduleDay.model_validate(s) for s in schedule], [e1, e2, e3])
+        assert _hard(before) == 0
+
+        steps, final_val, _ = plan_fixes(schedule, [e1, e2, e3], None, 2026, 6)
+        assert _hard(final_val) == 0, "Inga hårda fel (dygnsvila) får införas av planen"
+        assert _count_rule(final_val, "dygnsvila") == 0
+
+    def test_olosta_nar_ingen_personal(self):
+        """Saknas behörig personal rapporteras varningen som olöst (kräver vikarie)."""
+        # Endast DAGTID-personal → ingen får DAG_TIDIG av operatorn
+        dagtid = [_emp(1, ContractType.DAGTID), _emp(2, ContractType.DAGTID)]
+        schedule = _month_schedule(dagtid, lambda e, d: None)
+
+        steps, final_val, unresolved = plan_fixes(schedule, dagtid, None, 2026, 6)
+        # Inga dag_tidig-steg kan skapas
+        assert all(s["op"] != "dag_tidig" for s in steps)
+        assert any(u["rule_name"] == "dag_tidig_saknas" for u in unresolved), "Ska listas som olöst"
+
+    def test_idempotens(self):
+        """plan → applicera alla → planera igen ⇒ inga nya förbättrande steg."""
+        emps = [_emp(i) for i in (1, 2, 3)]
+        schedule = _month_schedule(emps, lambda e, d: None)
+
+        steps, _, _ = plan_fixes(schedule, emps, None, 2026, 6)
+        applied_sched, applied = apply_steps(schedule, emps, None, 2026, 6, steps)
+        assert applied > 0
+
+        steps2, _, _ = plan_fixes(applied_sched, emps, None, 2026, 6)
+        assert len(steps2) == 0, "Efter tillämpad plan ska inga fler förbättringar finnas"
+
+    def test_apply_delmangd_steg(self):
+        """Uppspelning av en delmängd valda steg ger ett giltigt schema."""
+        emps = [_emp(i) for i in (1, 2, 3)]
+        schedule = _month_schedule(emps, lambda e, d: None)
+
+        steps, _, _ = plan_fixes(schedule, emps, None, 2026, 6)
+        subset = steps[: max(1, len(steps) // 2)]
+
+        new_sched, applied = apply_steps(schedule, emps, None, 2026, 6, subset)
+        assert applied >= 1
+        # Schemat ska fortfarande gå att validera (alla dagar parsbara)
+        val = validate_schedule([ScheduleDay.model_validate(s) for s in new_sched], emps)
+        assert val is not None
+
+    def test_muterar_inte_original(self):
+        """plan_fixes ska inte mutera inskickat schema."""
+        emps = [_emp(i) for i in (1, 2)]
+        schedule = _month_schedule(emps, lambda e, d: None)
+        snapshot = [dict(s) for s in schedule]
+
+        plan_fixes(schedule, emps, None, 2026, 6)
+        assert schedule == snapshot
+
+
+class TestSimulateBemanning:
+
+    def test_omvandlar_obokad_till_pass(self):
+        """En obokad buffert ska kunna omvandlas till ett riktigt FM-pass."""
+        e1, e2 = _emp(1), _emp(2)
+        wed = date(2026, 6, 3)  # onsdag — tillåten för VARIERANDE
+        obokad = Shift(
+            shift_type=ShiftType.OBOKAD,
+            segments=[ShiftSegment(start_time=_dt(wed, 7), end_time=_dt(wed, 15))],
+            is_unbooked=True,
+        )
+        schedule = [
+            _sd(e1.id, wed, obokad),                       # buffert som kan tas i anspråk
+            _sd(e2.id, wed, _shift(wed, 7, 16, ShiftType.DAG)),  # 1 fm-huvud
+        ]
+
+        new_sched, chosen = _simulate_bemanning(schedule, wed, [e1, e2], [], slot="fm")
+        assert chosen == e1.id
+        sd = next(s for s in new_sched if s["employee_id"] == e1.id and s["date"] == wed.isoformat())
+        assert sd["shift"]["shift_type"] == "dag", "Obokad ska ha omvandlats till dag-pass"
+
+    def test_ingen_obokad_ger_none(self):
+        """Finns ingen obokad att omvandla → None (kräver vikarie)."""
+        e1 = _emp(1)
+        wed = date(2026, 6, 3)
+        schedule = [_sd(e1.id, wed, _shift(wed, 7, 16, ShiftType.DAG))]
+
+        new_sched, chosen = _simulate_bemanning(schedule, wed, [e1], [], slot="fm")
+        assert chosen is None
+
+
+class TestSimulateKvalLang:
+
+    def test_forlanger_kval_kort(self):
+        """Ett KVAL_KORT-pass ska förlängas till KVAL_LANG (21:30) för 21:30-täckning."""
+        e1 = _emp(1)
+        d = date(2026, 6, 10)
+        schedule = [_sd(e1.id, d, _shift(d, 13, 20, ShiftType.KVAL_KORT))]
+
+        new_sched, chosen = _simulate_kval_lang(schedule, d, [e1])
+        assert chosen == e1.id
+        sd = next(s for s in new_sched if s["employee_id"] == e1.id and s["date"] == d.isoformat())
+        assert sd["shift"]["shift_type"] == "kval_lang"
+        assert sd["shift"]["segments"][0]["end_time"].endswith("21:30:00+02:00")
+
+    def test_redan_tackt_ger_none(self):
+        """Finns redan ett KVAL_LANG ska operatorn inte göra något."""
+        e1 = _emp(1)
+        d = date(2026, 6, 10)
+        schedule = [_sd(e1.id, d, _shift(d, 13, 21, ShiftType.KVAL_LANG))]
+
+        new_sched, chosen = _simulate_kval_lang(schedule, d, [e1])
+        assert chosen is None
