@@ -255,18 +255,32 @@ export async function fetchPeriodInfo(
   month: number
 ): Promise<PeriodInfo> {
   const res = await apiFetch(`${BASE}/api/period/${encodeURIComponent(group)}/${year}/${month}`);
-  if (!res.ok) return { phase: "wish", has_schedule: false, apt_date: null, decisions: [] };
+  if (!res.ok) return { phase: "wish", has_schedule: false, apt_date: null, apt_time: null, wish_deadline: null, decisions: [] };
+  return res.json();
+}
+
+export async function setWishDeadline(
+  group: string, year: number, month: number,
+  wishDeadline: string | null,
+): Promise<PeriodInfo> {
+  const res = await apiFetch(`${BASE}/api/period/${encodeURIComponent(group)}/${year}/${month}/wish-deadline`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ wish_deadline: wishDeadline }),
+  });
+  if (!res.ok) throw new Error("Kunde inte spara sista dag för önskeschema");
   return res.json();
 }
 
 export async function setApt(
   group: string, year: number, month: number,
   aptDate: string | null,
+  aptTime: string | null = null,
 ): Promise<PeriodInfo> {
   const res = await apiFetch(`${BASE}/api/period/${encodeURIComponent(group)}/${year}/${month}/apt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ apt_date: aptDate }),
+    body: JSON.stringify({ apt_date: aptDate, apt_time: aptTime }),
   });
   if (!res.ok) throw new Error("Kunde inte spara APT-datum");
   return res.json();
@@ -392,6 +406,16 @@ export async function updateWishes(employeeId: string, wishes: string[]): Promis
     body: JSON.stringify({ wishes }),
   });
   if (!res.ok) throw new Error("Kunde inte spara önskemål");
+}
+
+export async function updateVetos(employeeId: string, vetos: string[]): Promise<Employee> {
+  const res = await apiFetch(`${BASE}/api/employees/${employeeId}/vetos`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ vetos }),
+  });
+  if (!res.ok) throw new Error("Kunde inte spara veton");
+  return res.json();
 }
 
 export async function generateSchedule(

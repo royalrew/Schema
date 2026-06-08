@@ -40,8 +40,10 @@ class SchedulePeriodRow(Base):
     month: Mapped[int] = mapped_column(Integer, nullable=False)
     phase: Mapped[str] = mapped_column(String, default="wish")  # wish | correction | attested
     schedule: Mapped[list] = mapped_column(JSON, default=list)   # list[ScheduleDay som dict]
-    apt_date: Mapped[str | None] = mapped_column(String, nullable=True)  # ISO-datum för APT denna period
-    decisions: Mapped[list] = mapped_column(JSON, default=list)  # list[str] beslutslogg från generatorn
+    apt_date: Mapped[str | None] = mapped_column(String, nullable=True)          # ISO-datum för APT denna period (YYYY-MM-DD)
+    apt_time: Mapped[str | None] = mapped_column(String, nullable=True)          # Klockslag för APT (HH:MM)
+    wish_deadline: Mapped[str | None] = mapped_column(String, nullable=True)   # Sista dag för önskeschema
+    decisions: Mapped[list] = mapped_column(JSON, default=list)                # list[str] beslutslogg från generatorn
 
 
 class ShiftConfigRow(Base):

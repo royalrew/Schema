@@ -77,6 +77,9 @@ async def _log_employee_action(db: AsyncSession, group_name: str, year: int, mon
 class WishesRequest(BaseModel):
     wishes: list[str]  # ISO-datumsträngar, t.ex. ["2026-06-02", "2026-06-09"]
 
+class VetosRequest(BaseModel):
+    vetos: list[str]  # ISO-datumsträngar
+
 class AbsencePeriod(BaseModel):
     start_date: str   # ISO-datum
     end_date: str     # ISO-datum
@@ -239,6 +242,34 @@ async def update_wishes(
             year, month = date.today().year, date.today().month
         timestamp_str = datetime.now(STOCKHOLM).strftime("%Y-%m-%d %H:%M")
         log_entry = f"[{timestamp_str}] Önskemål (lediga dagar/pass) uppdaterade för {row.name} av {current_user.full_name or current_user.username}."
+        await _log_employee_action(db, row.group_name, year, month, log_entry)
+
+    await db.commit()
+    return _row_to_employee(row)
+
+
+@router.put("/{employee_id}/vetos", response_model=Employee)
+async def update_vetos(
+    employee_id: str,
+    req: VetosRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRow = Depends(get_current_user),
+):
+    if current_user.role not in ("superadmin", "schemaansvarig") and current_user.employee_id != employee_id:
+        raise HTTPException(status_code=403, detail="Behörighet saknas.")
+    row = await db.get(EmployeeRow, employee_id)
+    if not row:
+        raise HTTPException(status_code=404, detail=f"Anställd {employee_id} hittades inte")
+    row.vetos = req.vetos
+
+    if req.vetos:
+        try:
+            first_date = date.fromisoformat(req.vetos[0])
+            year, month = first_date.year, first_date.month
+        except Exception:
+            year, month = date.today().year, date.today().month
+        timestamp_str = datetime.now(STOCKHOLM).strftime("%Y-%m-%d %H:%M")
+        log_entry = f"[{timestamp_str}] Veton uppdaterade för {row.name} av {current_user.full_name or current_user.username}."
         await _log_employee_action(db, row.group_name, year, month, log_entry)
 
     await db.commit()

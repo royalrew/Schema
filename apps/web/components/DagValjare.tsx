@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { X, Check } from "lucide-react";
 
 export interface WishShiftEntry {
@@ -24,9 +25,10 @@ interface Props {
   current: WishShiftEntry | null;
   onSave: (entry: WishShiftEntry | null) => void;
   onClose: () => void;
+  anchorRect?: DOMRect;   // om angiven renderas via portal med fixed position
 }
 
-export function DagValjare({ date, dateLabel, presets, current, onSave, onClose }: Props) {
+export function DagValjare({ date, dateLabel, presets, current, onSave, onClose, anchorRect }: Props) {
   const [mode, setMode] = useState<"preset" | "custom" | "ledig">(
     current?.shift_type === null && current?.start_time !== null ? "custom"
     : current?.start_time === null ? "ledig"
@@ -37,6 +39,8 @@ export function DagValjare({ date, dateLabel, presets, current, onSave, onClose 
   const [endTime, setEndTime] = useState(current?.end_time ?? "16:00");
   const [note, setNote] = useState(current?.note ?? "");
   const ref = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -65,11 +69,25 @@ export function DagValjare({ date, dateLabel, presets, current, onSave, onClose 
     onSave(null);  // null = ta bort helt
   }
 
-  return (
+  // Beräkna fixed-position baserat på ankarcellens position
+  const fixedStyle: React.CSSProperties = anchorRect
+    ? (() => {
+        const POPOVER_W = 288;
+        const MARGIN = 4;
+        // Placera under cellen, centrera horisontellt
+        let left = anchorRect.left + anchorRect.width / 2 - POPOVER_W / 2;
+        // Klipp vid fönsterkanten
+        left = Math.max(8, Math.min(left, window.innerWidth - POPOVER_W - 8));
+        const top = anchorRect.bottom + MARGIN + window.scrollY;
+        return { position: "fixed" as const, top, left, width: POPOVER_W, zIndex: 9999 };
+      })()
+    : {};
+
+  const content = (
     <div
       ref={ref}
-      className="absolute z-50 bg-white rounded-2xl shadow-2xl border border-gray-200 w-72 overflow-hidden"
-      style={{ top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 4 }}
+      className="bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden"
+      style={anchorRect ? fixedStyle : { position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 4, width: 288, zIndex: 50 }}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
@@ -184,4 +202,9 @@ export function DagValjare({ date, dateLabel, presets, current, onSave, onClose 
       </div>
     </div>
   );
+
+  if (anchorRect) {
+    return mounted ? createPortal(content, document.body) : null;
+  }
+  return content;
 }

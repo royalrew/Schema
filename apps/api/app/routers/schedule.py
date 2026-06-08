@@ -47,11 +47,18 @@ class PeriodInfo(BaseModel):
     phase: str
     has_schedule: bool
     apt_date: str | None = None
+    apt_time: str | None = None
+    wish_deadline: str | None = None
     decisions: list[str] = []
 
 
 class AptRequest(BaseModel):
     apt_date: str | None  # ISO-datum eller null för att ta bort
+    apt_time: str | None = None  # HH:MM klockslag, eller null
+
+
+class WishDeadlineRequest(BaseModel):
+    wish_deadline: str | None  # ISO-datum eller null för att ta bort
 
 
 class PhaseUpdateRequest(BaseModel):
@@ -139,8 +146,8 @@ async def get_period_info(
     )
     row = (await db.execute(stmt)).scalar_one_or_none()
     if not row:
-        return PeriodInfo(phase="wish", has_schedule=False, apt_date=None, decisions=[])
-    return PeriodInfo(phase=row.phase, has_schedule=bool(row.schedule), apt_date=row.apt_date, decisions=_parse_decisions(row.decisions))
+        return PeriodInfo(phase="wish", has_schedule=False, apt_date=None, wish_deadline=None, decisions=[])
+    return PeriodInfo(phase=row.phase, has_schedule=bool(row.schedule), apt_date=row.apt_date, apt_time=row.apt_time, wish_deadline=row.wish_deadline, decisions=_parse_decisions(row.decisions))
 
 
 @router.post("/period/{group}/{year}/{month}/phase", response_model=PeriodInfo)
@@ -176,7 +183,7 @@ async def advance_phase(
         row.decisions = current_decisions
 
     await db.commit()
-    return PeriodInfo(phase=row.phase, has_schedule=bool(row.schedule), apt_date=row.apt_date, decisions=_parse_decisions(row.decisions))
+    return PeriodInfo(phase=row.phase, has_schedule=bool(row.schedule), apt_date=row.apt_date, apt_time=row.apt_time, wish_deadline=row.wish_deadline, decisions=_parse_decisions(row.decisions))
 
 
 @router.post("/period/{group}/{year}/{month}/apt", response_model=PeriodInfo)
@@ -196,19 +203,53 @@ async def set_apt(
     row = (await db.execute(stmt)).scalar_one_or_none()
     
     timestamp_str = datetime.now(STOCKHOLM).strftime("%Y-%m-%d %H:%M")
-    log_entry = f"[{timestamp_str}] APT-datum satt till {req.apt_date} av {current_user.full_name or current_user.username}."
+    tid_str = f" kl. {req.apt_time}" if req.apt_time else ""
+    log_entry = f"[{timestamp_str}] APT satt till {req.apt_date}{tid_str} av {current_user.full_name or current_user.username}."
 
     if not row:
         row = SchedulePeriodRow(group_name=group, year=year, month=month,
-                                phase="wish", schedule=[], apt_date=req.apt_date, decisions=[log_entry])
+                                phase="wish", schedule=[], apt_date=req.apt_date, apt_time=req.apt_time, decisions=[log_entry])
         db.add(row)
     else:
         row.apt_date = req.apt_date
+        row.apt_time = req.apt_time
         current_decisions = list(row.decisions or [])
         current_decisions.append(log_entry)
         row.decisions = current_decisions
     await db.commit()
-    return PeriodInfo(phase=row.phase, has_schedule=bool(row.schedule), apt_date=row.apt_date, decisions=_parse_decisions(row.decisions))
+    return PeriodInfo(phase=row.phase, has_schedule=bool(row.schedule), apt_date=row.apt_date, apt_time=row.apt_time, wish_deadline=row.wish_deadline, decisions=_parse_decisions(row.decisions))
+
+
+@router.post("/period/{group}/{year}/{month}/wish-deadline", response_model=PeriodInfo)
+async def set_wish_deadline(
+    group: str, year: int, month: int,
+    req: WishDeadlineRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRow = Depends(require_admin_or_schemaansvarig),
+):
+    if current_user.username.startswith("demo_"):
+        group = f"Granbacken ({current_user.username})"
+    stmt = select(SchedulePeriodRow).where(
+        SchedulePeriodRow.group_name == group,
+        SchedulePeriodRow.year == year,
+        SchedulePeriodRow.month == month,
+    )
+    row = (await db.execute(stmt)).scalar_one_or_none()
+
+    timestamp_str = datetime.now(STOCKHOLM).strftime("%Y-%m-%d %H:%M")
+    log_entry = f"[{timestamp_str}] Sista dag för önskeschema satt till {req.wish_deadline} av {current_user.full_name or current_user.username}."
+
+    if not row:
+        row = SchedulePeriodRow(group_name=group, year=year, month=month,
+                                phase="wish", schedule=[], wish_deadline=req.wish_deadline, decisions=[log_entry])
+        db.add(row)
+    else:
+        row.wish_deadline = req.wish_deadline
+        current_decisions = list(row.decisions or [])
+        current_decisions.append(log_entry)
+        row.decisions = current_decisions
+    await db.commit()
+    return PeriodInfo(phase=row.phase, has_schedule=bool(row.schedule), apt_date=row.apt_date, apt_time=row.apt_time, wish_deadline=row.wish_deadline, decisions=_parse_decisions(row.decisions))
 
 
 @router.get("/schedule/{group}/{year}/{month}", response_model=list[ScheduleDay])
@@ -507,6 +548,79 @@ async def generate(
 
         current_d += timedelta(days=1)
 
+    # ── APT-pass: tilldela alla medarbetare APT om apt_date + apt_time är satt ──
+    # Hämta apt_date/apt_time för denna period
+    apt_stmt = select(SchedulePeriodRow).where(
+        SchedulePeriodRow.group_name == req.group.value,
+        SchedulePeriodRow.year == req.year,
+        SchedulePeriodRow.month == req.month,
+    )
+    apt_period = (await db.execute(apt_stmt)).scalar_one_or_none()
+    apt_date_str = apt_period.apt_date if apt_period else None
+    apt_time_str = apt_period.apt_time if apt_period else None
+
+    if apt_date_str and apt_time_str:
+        try:
+            apt_d = date.fromisoformat(apt_date_str)
+            apt_start_h, apt_start_m = map(int, apt_time_str.split(":"))
+            apt_end_h, apt_end_m = (apt_start_h + 2, apt_start_m + 15) if apt_start_m + 15 < 60 else (apt_start_h + 2, (apt_start_m + 15) - 60)
+
+            # APT slutar kl. starttid + 2h15m (om inte APT-config finns)
+            apt_cfg = next((c for c in shift_configs if c["shift_type"] == "APT"), None)
+            if apt_cfg:
+                apt_end_h, apt_end_m = map(int, apt_cfg["end_time"].split(":"))
+
+            if period_start <= apt_d <= period_end:
+                # Bygg index: employee_id → ScheduleDay på apt_d
+                apt_sched_idx: dict[str, int] = {}
+                for i, sd in enumerate(schedule_days):
+                    if isinstance(sd.date, date):
+                        sd_date = sd.date
+                    else:
+                        sd_date = date.fromisoformat(str(sd.date))
+                    if sd_date == apt_d:
+                        apt_sched_idx[sd.employee_id] = i
+
+                for emp in employees:
+                    # Hoppa över sjuka och semestrar — men inte övrig frånvaro
+                    skip_abs = {AbsenceType.SJUK, AbsenceType.SEM}
+                    has_blocking_absence = any(
+                        a.date == apt_d and a.absence_type in skip_abs
+                        for a in emp.absences
+                    )
+                    if has_blocking_absence:
+                        continue
+
+                    # Bygg APT-shift
+                    apt_shift = Shift(
+                        shift_type=ShiftType.APT,
+                        segments=[ShiftSegment(
+                            start_time=datetime(apt_d.year, apt_d.month, apt_d.day, apt_start_h, apt_start_m, tzinfo=STOCKHOLM),
+                            end_time=datetime(apt_d.year, apt_d.month, apt_d.day, apt_end_h, apt_end_m, tzinfo=STOCKHOLM),
+                        )],
+                    )
+
+                    if emp.id in apt_sched_idx:
+                        # Ersätt befintlig dag med APT (om inte sjuk/sem)
+                        schedule_days[apt_sched_idx[emp.id]] = ScheduleDay(
+                            date=apt_d,
+                            employee_id=emp.id,
+                            shift=apt_shift,
+                        )
+                    else:
+                        # Helgarbetare eller personal utan dag — lägg till ny dag
+                        schedule_days.append(ScheduleDay(
+                            date=apt_d,
+                            employee_id=emp.id,
+                            shift=apt_shift,
+                        ))
+
+                decisions.append(
+                    f"{apt_d.isoformat()}: [APT] APT-pass tilldelat alla medarbetare i {req.group.value} kl. {apt_time_str}."
+                )
+        except Exception as exc:
+            decisions.append(f"[APT] Kunde inte tilldela APT-pass: {exc}")
+
     # Spara till databasen (upsert) — Spara ENDAST den egna gruppens dagar i periodens schedule-fält!
     save_stmt = select(SchedulePeriodRow).where(
         SchedulePeriodRow.group_name == req.group.value,
@@ -659,7 +773,8 @@ async def update_schedule_day(
         employee_id=req.employee_id,
         shift=shift_obj,
         absence=absence_obj,
-        assigned_group=None
+        assigned_group=None,
+        note=req.note or None,
     )
     new_day_dict = _schedule_day_to_dict(new_day)
 

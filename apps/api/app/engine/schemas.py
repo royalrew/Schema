@@ -65,6 +65,7 @@ class AbsenceType(str, Enum):
     VAB = "VAB"    # Vård av barn
     KOM = "KOM"    # Kompledig
     STU = "STU"    # Studieledighet
+    UTB = "UTB"    # Utbildning
 
 class ShiftType(str, Enum):
     """Standardiserade passtyper i verksamheten."""
@@ -151,6 +152,7 @@ class ScheduleDay(BaseModel):
     shift: Optional[Shift] = Field(None, description="Arbetspass (om schemalagd)")
     absence: Optional[Absence] = Field(None, description="Frånvaro (om frånvarande)")
     assigned_group: Optional[Group] = Field(None, description="Gruppen där arbetspasset utförs, om annat än ordinarie grupp")
+    note: Optional[str] = Field(None, description="Fritext-anteckning för dagen")
 
 class HourlyRequirement(BaseModel):
     """Timbaserat bemanningskrav eller överkapacitetskrav."""

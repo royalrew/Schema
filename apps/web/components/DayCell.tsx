@@ -25,6 +25,7 @@ const ABSENCE_STYLES: Record<string, ShiftStyle> = {
   sem:  { label: "SEM", time: "Semester",      bg: "bg-orange-400", text: "text-white" },
   FL:   { label: "FL",  time: "Föräldraled.",  bg: "bg-orange-300", text: "text-white" },
   TJL:  { label: "TJL", time: "Tjänsteled.",   bg: "bg-amber-400",  text: "text-white" },
+  UTB:  { label: "UTB", time: "Utbildning",    bg: "bg-violet-500", text: "text-white" },
   sjuk: { label: "SJK", time: "Sjuk",          bg: "bg-red-500",    text: "text-white" },
 };
 
@@ -78,6 +79,7 @@ export function DayCell({ day, errors, isWeekend, isWished, canEdit, onEdit }: P
   const tooltipLines = [
     timeText,
     day.assigned_group ? `Utförs i: ${day.assigned_group}` : "",
+    day.note ? `📝 ${day.note}` : "",
     ...errors.map((e) => `⚠ ${e.message}`),
   ];
 
@@ -112,6 +114,10 @@ export function DayCell({ day, errors, isWeekend, isWished, canEdit, onEdit }: P
       {/* Önskemålsindikator när dag redan är schemalagd */}
       {isWished && style && (
         <span className="absolute bottom-0 left-0 w-1.5 h-1.5 bg-green-500 rounded-full pointer-events-none" />
+      )}
+      {/* Anteckningsindikator */}
+      {day.note && (
+        <span className="absolute bottom-0 right-0 w-1.5 h-1.5 bg-blue-400 rounded-full pointer-events-none" title={day.note} />
       )}
     </td>
   );

@@ -12,7 +12,7 @@ import { ValidationPanel } from "./ValidationPanel";
 import { PhaseBar } from "./PhaseBar";
 import { AIModal } from "./AIModal";
 import { BeslutsloggPanel } from "./BeslutsloggPanel";
-import { generateSchedule, fetchEmployees, fetchSchedule, fetchPeriodInfo, advancePhase, updateWishes, setApt, fetchShiftConfigs, updateScheduleDay, type UpdateScheduleDayData } from "@/lib/api";
+import { generateSchedule, fetchEmployees, fetchSchedule, fetchPeriodInfo, advancePhase, updateWishes, setApt, setWishDeadline, fetchShiftConfigs, updateScheduleDay, type UpdateScheduleDayData } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { ScheduleDayEditor, type ShiftPreset } from "./ScheduleDayEditor";
 import type { Employee, ScheduleDay, ValidationResult, ValidationError, Phase } from "@/lib/types";
@@ -48,6 +48,8 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
   const [phaseLoading, setPhaseLoading] = useState(false);
   const [phase, setPhase] = useState<Phase>("wish");
   const [aptDate, setAptDate] = useState<string | null>(null);
+  const [aptTime, setAptTimeState] = useState<string | null>(null);
+  const [wishDeadline, setWishDeadlineState] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"calendar" | "grid">("calendar");
   const [decisions, setDecisions] = useState<string[]>([]);
@@ -82,6 +84,8 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
           setSchedule(sched);
           setPhase(periodInfo.phase);
           setAptDate(periodInfo.apt_date ?? null);
+          setAptTimeState(periodInfo.apt_time ?? null);
+          setWishDeadlineState(periodInfo.wish_deadline ?? null);
           setDecisions(periodInfo.decisions ?? []);
           setValidation(null);
           setStats(null);
@@ -252,18 +256,44 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
             </button>
           </div>
 
-          {/* APT-datum */}
+          {/* Sista dag för önskeschema */}
           <div className="flex items-center gap-1.5">
-            <span className="text-xs text-gray-400 font-medium">APT:</span>
+            <span className="text-xs text-gray-400 font-medium whitespace-nowrap">Sista dag önskeschema:</span>
+            <input
+              type="date"
+              value={wishDeadline ?? ""}
+              onChange={async e => {
+                const val = e.target.value || null;
+                const info = await setWishDeadline(group, year, month, val).catch(() => null);
+                if (info) setWishDeadlineState(info.wish_deadline ?? null);
+              }}
+              className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-terracotta/40"
+            />
+          </div>
+
+          {/* APT — datum + tid */}
+          <div className="flex items-center gap-1 border border-gray-200 rounded-lg overflow-hidden">
+            <span className="text-xs text-gray-400 font-medium px-2 bg-gray-50 self-stretch flex items-center border-r border-gray-200">APT</span>
             <input
               type="date"
               value={aptDate ?? ""}
               onChange={async e => {
                 const val = e.target.value || null;
-                const info = await setApt(group, year, month, val).catch(() => null);
-                if (info) setAptDate(info.apt_date ?? null);
+                const info = await setApt(group, year, month, val, aptTime).catch(() => null);
+                if (info) { setAptDate(info.apt_date ?? null); setAptTimeState(info.apt_time ?? null); }
               }}
-              className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-terracotta/40"
+              className="px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-inset focus:ring-terracotta/40 border-r border-gray-200"
+            />
+            <input
+              type="time"
+              value={aptTime ?? ""}
+              disabled={!aptDate}
+              onChange={async e => {
+                const val = e.target.value || null;
+                const info = await setApt(group, year, month, aptDate, val).catch(() => null);
+                if (info) { setAptDate(info.apt_date ?? null); setAptTimeState(info.apt_time ?? null); }
+              }}
+              className="px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-inset focus:ring-terracotta/40 disabled:opacity-40 disabled:bg-gray-50"
             />
           </div>
 

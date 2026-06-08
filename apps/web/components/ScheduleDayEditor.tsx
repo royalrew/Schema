@@ -39,6 +39,7 @@ const ABSENCE_TYPES = [
   { value: "VAB", label: "VAB" },
   { value: "KOM", label: "Kompledig" },
   { value: "STU", label: "Studieledig" },
+  { value: "UTB", label: "Utbildning" },
 ];
 
 export function ScheduleDayEditor({ 
@@ -65,10 +66,10 @@ export function ScheduleDayEditor({
     if (currentDay?.absence) {
       setMode("absence");
       setSelectedAbsence(currentDay.absence.absence_type);
-      setNote(currentDay.shift?.note ?? "");
+      setNote(currentDay.note ?? currentDay.shift?.note ?? "");
     } else if (currentDay?.shift) {
       const shift = currentDay.shift;
-      setNote(shift.note ?? "");
+      setNote(currentDay.note ?? shift.note ?? "");
       
       // Check if it matches a preset
       const match = presets.find(

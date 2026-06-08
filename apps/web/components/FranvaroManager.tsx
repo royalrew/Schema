@@ -12,6 +12,7 @@ const ABSENCE_TYPES = [
   { value: "VAB",  label: "Vård av barn (VAB)",      color: "bg-sky-400",     text: "text-white" },
   { value: "KOM",  label: "Kompledig",               color: "bg-teal-400",    text: "text-white" },
   { value: "STU",  label: "Studieledighet",          color: "bg-indigo-400",  text: "text-white" },
+  { value: "UTB",  label: "Utbildning",              color: "bg-violet-500",  text: "text-white" },
   { value: "sjuk", label: "Sjukskrivning (långtid)", color: "bg-red-500",     text: "text-white" },
 ];
 

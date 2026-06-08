@@ -27,6 +27,7 @@ const ABSENCE_LABEL: Record<string, { short: string; bg: string }> = {
   sem:  { short: "SEM", bg: "#fb923c" },
   FL:   { short: "FL",  bg: "#fdba74" },
   TJL:  { short: "TJL", bg: "#fbbf24" },
+  UTB:  { short: "UTB", bg: "#8b5cf6" },
   sjuk: { short: "SJK", bg: "#ef4444" },
 };
 

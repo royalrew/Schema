@@ -69,6 +69,7 @@ export interface ScheduleDay {
   shift: Shift | null;
   absence: Absence | null;
   assigned_group?: string;
+  note?: string | null;
 }
 
 export interface ValidationError {
@@ -90,6 +91,8 @@ export interface PeriodInfo {
   phase: Phase;
   has_schedule: boolean;
   apt_date: string | null;
+  apt_time: string | null;
+  wish_deadline: string | null;
   decisions: string[];
 }
 

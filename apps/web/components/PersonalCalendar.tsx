@@ -2,10 +2,10 @@
 import { useState, useCallback, useEffect } from "react";
 import { format, getDaysInMonth, getDay } from "date-fns";
 import { sv } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, ArrowLeft, Star, CalendarDays, Clock, UserCircle, LogOut } from "lucide-react";
+import { ChevronLeft, ChevronRight, ArrowLeft, Star, CalendarDays, Clock, UserCircle, LogOut, MessageSquare } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { updateWishSchedule, fetchShiftConfigs, fetchSchedule, fetchPeriodInfo, fetchEmployee, updateWishes, type WishShiftEntry } from "@/lib/api";
+import { updateWishSchedule, fetchShiftConfigs, fetchSchedule, fetchPeriodInfo, fetchEmployee, updateWishes, updateVetos, type WishShiftEntry } from "@/lib/api";
 import { getUser, clearToken } from "@/lib/auth";
 import { ChangePasswordModal } from "./ChangePasswordModal";
 import { DagValjare, type ShiftPreset } from "./DagValjare";
@@ -34,6 +34,7 @@ const ABSENCE: Record<string, { label: string; sub: string; bg: string; fg: stri
   VAB:  { label: "VAB",          sub: "Vård av barn", bg: "#38bdf8", fg: "#fff" },
   KOM:  { label: "Kompledig",    sub: "", bg: "#2dd4bf", fg: "#fff" },
   STU:  { label: "Studieledig.", sub: "", bg: "#818cf8", fg: "#fff" },
+  UTB:  { label: "Utbildning",   sub: "", bg: "#8b5cf6", fg: "#fff" },
   sjuk: { label: "Sjukskrivning",sub: "", bg: "#ef4444", fg: "#fff" },
 };
 
@@ -48,6 +49,7 @@ interface Props {
   employee: Employee;
   initialSchedule: ScheduleDay[];
   initialPhase: Phase;
+  initialWishDeadline: string | null;
   year: number;
   month: number;
 }
@@ -56,6 +58,7 @@ export function PersonalCalendar({
   employee: init,
   initialSchedule,
   initialPhase,
+  initialWishDeadline,
   year: initYear,
   month: initMonth,
 }: Props) {
@@ -63,10 +66,12 @@ export function PersonalCalendar({
   const [emp, setEmp] = useState(init);
   const [schedule, setSchedule] = useState<ScheduleDay[]>(initialSchedule);
   const [phase, setPhase] = useState<Phase>(initialPhase);
+  const [wishDeadline, setWishDeadline] = useState<string | null>(initialWishDeadline);
   const [year, setYear] = useState(initYear);
   const [month, setMonth] = useState(initMonth);
   const [saving, setSaving] = useState(false);
   const [openDay, setOpenDay] = useState<string | null>(null);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const [presets, setPresets] = useState<ShiftPreset[]>([]);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
 
@@ -94,11 +99,12 @@ export function PersonalCalendar({
     setMonth(m);
     const [sched, info, fresh] = await Promise.all([
       fetchSchedule(emp.group, y, m).catch(() => []),
-      fetchPeriodInfo(emp.group, y, m).catch(() => ({ phase: "wish" as Phase, has_schedule: false })),
+      fetchPeriodInfo(emp.group, y, m).catch(() => ({ phase: "wish" as Phase, has_schedule: false, apt_date: null, wish_deadline: null, decisions: [] })),
       fetchEmployee(emp.id).catch(() => emp),
     ]);
     setSchedule(sched.filter(sd => sd.employee_id === emp.id));
     setPhase(info.phase);
+    setWishDeadline(info.wish_deadline ?? null);
     setEmp(fresh);
   }
 
@@ -111,6 +117,20 @@ export function PersonalCalendar({
     try {
       await updateWishes(emp.id, arr);
       setEmp(prev => ({ ...prev, wishes: arr as unknown as typeof prev.wishes }));
+    } finally {
+      setSaving(false);
+    }
+  }, [emp]);
+
+  const toggleVeto = useCallback(async (dateStr: string) => {
+    const current = (emp.vetos as unknown as string[]) ?? [];
+    const next = current.includes(dateStr)
+      ? current.filter(v => v !== dateStr)
+      : [...current, dateStr];
+    setSaving(true);
+    try {
+      const fresh = await updateVetos(emp.id, next);
+      setEmp(fresh);
     } finally {
       setSaving(false);
     }
@@ -131,6 +151,9 @@ export function PersonalCalendar({
   // Wish schedule index
   const rawWishSchedule: WishShiftEntry[] = (emp as unknown as { wish_schedule?: WishShiftEntry[] }).wish_schedule ?? [];
   const wishIdx = new Map(rawWishSchedule.map(w => [w.date, w]));
+
+  // Veto-index: set av ISO-datumsträngar
+  const vetoSet = new Set<string>((emp.vetos as unknown as string[]) ?? []);
 
   const saveWishEntry = useCallback(async (entry: WishShiftEntry | null, dateStr: string) => {
     setSaving(true);
@@ -212,16 +235,51 @@ export function PersonalCalendar({
 
       {/* ── Fas-banner (framträdande) ── */}
       <div className={`border-b px-4 py-3 ${phaseConf.banner}`}>
-        <div className="max-w-lg mx-auto flex items-start gap-3">
-          <span className="text-xl shrink-0">{phaseConf.icon}</span>
-          <div>
-            <p className="font-semibold text-sm">{phaseConf.title}</p>
-            <p className="text-xs opacity-80 mt-0.5">{phaseConf.desc}</p>
+        <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <span className="text-xl shrink-0">{phaseConf.icon}</span>
+            <div>
+              <p className="font-semibold text-sm">{phaseConf.title}</p>
+              <p className="text-xs opacity-80 mt-0.5">{phaseConf.desc}</p>
+            </div>
           </div>
+          {/* Deadline-badge — visas bara i önskeläge när deadline finns */}
+          {phase === "wish" && wishDeadline && (() => {
+            const dl = new Date(wishDeadline);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            dl.setHours(0, 0, 0, 0);
+            const daysLeft = Math.round((dl.getTime() - today.getTime()) / 86_400_000);
+            const passed = daysLeft < 0;
+            const soon = daysLeft >= 0 && daysLeft <= 3;
+            const formatted = dl.toLocaleDateString("sv-SE", { weekday: "long", day: "numeric", month: "long" });
+            return (
+              <div className={`shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl border font-medium text-sm ${
+                passed ? "bg-red-50 border-red-300 text-red-700" :
+                soon   ? "bg-orange-50 border-orange-300 text-orange-700" :
+                         "bg-white border-green-300 text-green-800"
+              }`}>
+                <span className="text-base">{passed ? "⚠️" : soon ? "⏰" : "📅"}</span>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide opacity-70">
+                    Sista dag att lämna önskeschema
+                  </p>
+                  <p className="font-bold capitalize">{formatted}</p>
+                  <p className="text-xs mt-0.5">
+                    {passed
+                      ? "Deadline har passerat"
+                      : daysLeft === 0
+                        ? "Sista dagen idag!"
+                        : `${daysLeft} dag${daysLeft === 1 ? "" : "ar"} kvar`}
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto p-4">
+      <div className="max-w-6xl mx-auto p-4">
         {/* ── Månadsnavigering ── */}
         <div className="flex items-center justify-between mb-4">
           <button
@@ -261,7 +319,7 @@ export function PersonalCalendar({
               <div key={wi} className={`grid grid-cols-7 ${wi > 0 ? "border-t border-gray-200" : ""}`}>
                 {week.map((day, di) => {
                   if (!day) return (
-                    <div key={di} className={`min-h-20 bg-gray-100 ${di < 6 ? "border-r border-gray-200" : ""}`}
+                    <div key={di} className={`min-h-28 bg-gray-100 ${di < 6 ? "border-r border-gray-200" : ""}`}
                       style={{ backgroundImage: "repeating-linear-gradient(45deg,transparent,transparent 4px,rgba(0,0,0,0.03) 4px,rgba(0,0,0,0.03) 8px)" }}
                     >
                       {di === 0 && <span className="text-[9px] text-gray-300 p-1 block">v{wn}</span>}
@@ -271,11 +329,12 @@ export function PersonalCalendar({
                   const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
                   const sd = schedIdx.get(dateStr);
                   const wishEntry = wishIdx.get(dateStr) ?? null;
+                  const isVeto = vetoSet.has(dateStr);
                   const isWe = di >= 5;
                   const canEdit = phase === "wish" && !sd?.absence;
                   const isOpen = openDay === dateStr;
 
-                  // Badge: visa önskad tur ELLER schemalagd tur ELLER frånvaro
+                  // Badge: visa frånvaro → önskad tur → schemalagd tur → veto
                   let badge: { label: string; sub: string; bg: string; fg: string } | null = null;
                   if (sd?.absence) {
                     badge = ABSENCE[sd.absence.absence_type] ?? null;
@@ -301,19 +360,40 @@ export function PersonalCalendar({
                     <div
                       key={di}
                       className={[
-                        "relative min-h-20 p-2 flex flex-col gap-1 select-none",
+                        "relative min-h-28 p-2 flex flex-col gap-1 select-none",
                         di < 6 ? "border-r border-gray-100" : "",
                         isWe ? "bg-blue-50/40" : "",
-                        wishEntry && !wishEntry.start_time ? "bg-gray-50" : "",
+                        isVeto ? "bg-red-50/50" : "",
+                        wishEntry && !wishEntry.start_time && !isVeto ? "bg-gray-50" : "",
                         wishEntry?.start_time ? "bg-green-50/30" : "",
                         canEdit ? "cursor-pointer hover:bg-blue-50/30 transition-colors" : "",
                         saving ? "opacity-50" : "",
                       ].join(" ")}
-                      onClick={() => canEdit && setOpenDay(isOpen ? null : dateStr)}
+                      onClick={e => {
+                        if (!canEdit) return;
+                        if (isOpen) { setOpenDay(null); setAnchorRect(null); }
+                        else { setOpenDay(dateStr); setAnchorRect(e.currentTarget.getBoundingClientRect()); }
+                      }}
                     >
                       <div className="flex items-start justify-between">
                         <span className={`text-base font-bold ${isWe ? "text-blue-600" : "text-gray-800"}`}>{day}</span>
-                        {di === 0 && <span className="text-[9px] text-gray-300">v{wn}</span>}
+                        <div className="flex items-center gap-1">
+                          {di === 0 && <span className="text-[9px] text-gray-300">v{wn}</span>}
+                          {/* Veto-knapp — bara i önskeläge och utan frånvaro */}
+                          {canEdit && !sd?.shift && (
+                            <button
+                              onClick={e => { e.stopPropagation(); toggleVeto(dateStr); }}
+                              title={isVeto ? "Ta bort veto" : "Lägg veto — vill inte jobba denna dag"}
+                              className={`text-[9px] font-bold px-1 py-0.5 rounded transition-colors ${
+                                isVeto
+                                  ? "bg-red-500 text-white"
+                                  : "text-gray-300 hover:text-red-400 hover:bg-red-50"
+                              }`}
+                            >
+                              {isVeto ? "VETO" : "veto"}
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       {badge ? (
@@ -324,21 +404,26 @@ export function PersonalCalendar({
                           {badge.label}
                           {badge.sub && <span className="block text-[9px] font-normal opacity-75">{badge.sub}</span>}
                         </span>
+                      ) : isVeto ? (
+                        <span className="text-[11px] font-semibold px-2 py-1 rounded-lg text-center block leading-tight bg-red-100 text-red-600">
+                          Vill inte jobba
+                        </span>
                       ) : canEdit ? (
                         <span className="text-[10px] text-gray-300 text-center block mt-1">+ lägg tur</span>
                       ) : null}
 
-                      {/* DagValjare popover */}
-                      {isOpen && (
-                        <DagValjare
-                          date={dateStr}
-                          dateLabel={dateLabel}
-                          presets={presets}
-                          current={wishEntry}
-                          onSave={entry => saveWishEntry(entry, dateStr)}
-                          onClose={() => setOpenDay(null)}
-                        />
-                      )}
+                      {/* Anteckningsikon — visas om wish-not eller schemalagd not finns */}
+                      {(() => {
+                        const noteText = wishEntry?.note || sd?.note;
+                        if (!noteText) return null;
+                        return (
+                          <div className="flex items-center gap-1 mt-auto pt-1" title={noteText}>
+                            <MessageSquare size={10} className="text-blue-400 shrink-0" />
+                            <span className="text-[9px] text-blue-400 truncate leading-tight">{noteText}</span>
+                          </div>
+                        );
+                      })()}
+
                     </div>
                   );
                 })}
@@ -349,8 +434,28 @@ export function PersonalCalendar({
 
           </div>{/* slut vänster kalender-div */}
 
+          {/* Global DagValjare portal — utanför overflow-hidden-kontexten */}
+          {openDay && anchorRect && (() => {
+            const wishEntry = wishIdx.get(openDay) ?? null;
+            const dayNum = parseInt(openDay.split("-")[2]);
+            const di = (getDay(new Date(openDay)) + 6) % 7;
+            const dayName = ["mån","tis","ons","tor","fre","lör","sön"][di];
+            const dateLabel = `${dayName.charAt(0).toUpperCase() + dayName.slice(1)} ${dayNum} ${format(new Date(year, month - 1), "MMMM", { locale: sv })}`;
+            return (
+              <DagValjare
+                date={openDay}
+                dateLabel={dateLabel}
+                presets={presets}
+                current={wishEntry}
+                onSave={entry => saveWishEntry(entry, openDay)}
+                onClose={() => { setOpenDay(null); setAnchorRect(null); }}
+                anchorRect={anchorRect}
+              />
+            );
+          })()}
+
           {/* HÖGER: Stats + Personkort */}
-          <div className="w-72 shrink-0 space-y-4">
+          <div className="w-80 shrink-0 space-y-4">
 
             {/* Statistikkort */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
@@ -387,6 +492,15 @@ export function PersonalCalendar({
                       <span className="text-sm text-green-700 font-medium">Önskemål inlagda</span>
                     </div>
                     <span className="text-lg font-bold text-green-700">{wishedDays}</span>
+                  </div>
+                )}
+                {phase === "wish" && vetoSet.size > 0 && (
+                  <div className="px-4 py-3 flex items-center justify-between bg-red-50">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-red-500">✕</span>
+                      <span className="text-sm text-red-700 font-medium">Veton lagda</span>
+                    </div>
+                    <span className="text-lg font-bold text-red-600">{vetoSet.size}</span>
                   </div>
                 )}
               </div>

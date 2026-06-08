@@ -19,6 +19,7 @@ export default function PersonalPage({ params }: Props) {
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [mySchedule, setMySchedule] = useState<ScheduleDay[]>([]);
   const [phase, setPhase] = useState<"wish" | "correction" | "attested">("wish");
+  const [wishDeadline, setWishDeadline] = useState<string | null>(null);
 
   useEffect(() => {
     // 1. Roll-kontroll: Anställda får enbart titta på sin egen kalender!
@@ -43,8 +44,9 @@ export default function PersonalPage({ params }: Props) {
         const emp = await fetchEmployee(employeeId);
         setEmployee(emp);
 
-        const periodInfo = await fetchPeriodInfo("", year, month).catch(() => ({ phase: "wish" as const, has_schedule: false }));
+        const periodInfo = await fetchPeriodInfo("", year, month).catch(() => ({ phase: "wish" as const, has_schedule: false, apt_date: null, wish_deadline: null, decisions: [] }));
         setPhase(periodInfo.phase);
+        setWishDeadline(periodInfo.wish_deadline ?? null);
 
         const schedule = await fetchSchedule(emp.group, year, month).catch(() => []);
         const filtered = schedule.filter(sd => sd.employee_id === employeeId);
@@ -85,6 +87,7 @@ export default function PersonalPage({ params }: Props) {
         employee={employee}
         initialSchedule={mySchedule}
         initialPhase={phase}
+        initialWishDeadline={wishDeadline}
         year={year}
         month={month}
       />

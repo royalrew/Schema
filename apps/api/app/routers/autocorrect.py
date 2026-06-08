@@ -54,7 +54,7 @@ def _simulate_dag_tidig(
     datestr = target_date.isoformat()
 
     has_tidig = any(
-        schedule[sched_idx[(e.id, datestr)]].get("shift", {}).get("shift_type") == "dag_tidig"
+        (schedule[sched_idx[(e.id, datestr)]].get("shift") or {}).get("shift_type") == "dag_tidig"
         for e in employees
         if (e.id, datestr) in sched_idx
     )
