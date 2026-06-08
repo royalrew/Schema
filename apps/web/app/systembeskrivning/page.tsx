@@ -229,16 +229,6 @@ const SPECIFICATIONS: SpecItem[] = [
     ]
   },
   {
-    id: "hard-consecutive",
-    category: "hard-rules",
-    title: "Max 4 arbetsdagar i rad (Streak limits)",
-    desc: "För att förhindra utmattning och säkra veckovilan tillåter generatorn max 4 arbetsdagar i följd.",
-    bullets: [
-      "Efter 4 dagars arbete schemaläggs automatiskt en ledig dag.",
-      "Undantag: Personal med Dagtidskontrakt tillåts jobba 5 dagar i rad (måndag–fredag)."
-    ]
-  },
-  {
     id: "hard-ledig28",
     category: "hard-rules",
     title: "Ledighetspolicy (9 av 28 dagar)",

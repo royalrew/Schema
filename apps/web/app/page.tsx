@@ -82,6 +82,95 @@ const Icon = {
   ),
 };
 
+/* ── Schemaläggningskalkylator ── */
+function CostCalculator() {
+  const [staff, setStaff] = useState(20);
+  const [hoursPerMonth, setHoursPerMonth] = useState(8);
+  const [hourlyRate, setHourlyRate] = useState(450);
+
+  const totalHours = staff * hoursPerMonth * 12;
+  const totalCost = totalHours * hourlyRate;
+  const groups = Math.max(1, Math.round(staff / 8));
+  const sintariHours = groups * 2;
+
+  function fmt(n: number) { return n.toLocaleString("sv-SE"); }
+
+  return (
+    <div className="bg-white/60 border border-ink/8 rounded-3xl p-8 md:p-10 shadow-sm">
+      <div className="grid md:grid-cols-[1fr_auto_1fr] gap-10 items-center">
+
+        {/* Sliders */}
+        <div className="space-y-7">
+          <div className="space-y-2">
+            <div className="flex justify-between items-baseline">
+              <label className="text-sm font-semibold text-ink">Antal personal</label>
+              <span className="font-display text-2xl text-terracotta">{staff}</span>
+            </div>
+            <input type="range" min={3} max={120} value={staff}
+              onChange={e => setStaff(Number(e.target.value))}
+              className="w-full accent-terracotta cursor-pointer" />
+            <div className="flex justify-between text-[10px] text-ink-soft/50 font-mono">
+              <span>3</span><span>120</span>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex justify-between items-baseline">
+              <label className="text-sm font-semibold text-ink">Timmar per person/månad</label>
+              <span className="font-display text-2xl text-terracotta">{hoursPerMonth} h</span>
+            </div>
+            <input type="range" min={1} max={30} value={hoursPerMonth}
+              onChange={e => setHoursPerMonth(Number(e.target.value))}
+              className="w-full accent-terracotta cursor-pointer" />
+            <div className="flex justify-between text-[10px] text-ink-soft/50 font-mono">
+              <span>1 h</span><span>30 h</span>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex justify-between items-baseline">
+              <label className="text-sm font-semibold text-ink">Timlön inkl. arbetsgivaravgift</label>
+              <span className="font-display text-2xl text-terracotta">{fmt(hourlyRate)} kr</span>
+            </div>
+            <input type="range" min={200} max={800} step={10} value={hourlyRate}
+              onChange={e => setHourlyRate(Number(e.target.value))}
+              className="w-full accent-terracotta cursor-pointer" />
+            <div className="flex justify-between text-[10px] text-ink-soft/50 font-mono">
+              <span>200 kr</span><span>800 kr</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Separator */}
+        <div className="hidden md:block w-px self-stretch bg-ink/8" />
+
+        {/* Resultat */}
+        <div className="space-y-6">
+          <p className="mono-label text-ink-soft/50 text-[10px]">Er nuvarande kostnad</p>
+
+          <div>
+            <p className="display text-5xl text-terracotta font-semibold tabular-nums">{fmt(totalHours)}</p>
+            <p className="mono-label text-ink-soft/60 mt-1">timmar / år</p>
+            <p className="text-xs text-ink-soft mt-1">lagd på att skapa och rätta scheman</p>
+          </div>
+
+          <div>
+            <p className="display text-5xl text-terracotta font-semibold tabular-nums">{fmt(totalCost)}</p>
+            <p className="mono-label text-ink-soft/60 mt-1">kronor / år</p>
+            <p className="text-xs text-ink-soft mt-1">i ren arbetstid — innan en enda brukartimme är utförd</p>
+          </div>
+
+          <div className="border-t border-ink/8 pt-4">
+            <p className="mono-label text-[10px] text-sage mb-1">Med Sintari</p>
+            <p className="display text-3xl font-semibold text-ink tabular-nums">~{fmt(sintariHours)} h / år</p>
+            <p className="text-xs text-ink-soft mt-1">{groups} {groups === 1 ? "grupp" : "grupper"} × 2 h — resten sköter systemet</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * A client-side component that animates a count up from 0 to a target number
  * when it scrolls into view, formatted using Swedish locale formatting.
@@ -407,32 +496,21 @@ export default function LandingPage() {
         </div>
       </header>
 
-      {/* ════════ VÄRDE ════════ */}
+      {/* ════════ VÄRDE / KALKYLATOR ════════ */}
       <section id="varde" className="py-28 px-6">
         <div className="max-w-6xl mx-auto">
-          <div className="max-w-2xl mb-16 reveal-left">
+          <div className="max-w-2xl mb-12 reveal-left">
             <p className="mono-label text-terracotta mb-4">Vad det kostar idag</p>
-            <h2 className="display text-4xl md:text-5xl leading-tight">
+            <h2 className="display text-4xl md:text-5xl leading-tight mb-4">
               Tiden att lägga schema är dyrare än man tror.
             </h2>
+            <p className="text-sm text-ink-soft leading-relaxed">
+              Dra reglagen för att anpassa kalkylen till er verksamhet — se hur mycket tid och pengar som försvinner i manuellt schemaarbete varje år.
+            </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-5">
-            {[
-              { end: 1248, prefix: "", suffix: "", unit: "timmar / år", desc: "läggs på att skapa och rätta scheman i en verksamhet med sex grupper." },
-              { end: 307000, prefix: "", suffix: "", unit: "kronor / år", desc: "i ren arbetstid — innan en enda brukartimme är utförd." },
-              { end: 2, prefix: "< ", suffix: "", unit: "timmar / grupp", desc: "med Sintari. En knapptryckning ersätter en hel arbetsdag." },
-            ].map((s, i) => (
-              <div key={i} className={`bg-white/60 border border-ink/8 rounded-3xl p-8 hover:-translate-y-1.5 hover:bg-white hover:border-terracotta/30 hover:shadow-xl hover:shadow-terracotta/5 transition-all duration-500 reveal-up ${
-                i === 0 ? "delay-100" : i === 1 ? "delay-200" : "delay-300"
-              }`}>
-                <p className="display text-5xl mb-1 tabular-nums text-terracotta font-semibold">
-                  <CountUp end={s.end} prefix={s.prefix} suffix={s.suffix} />
-                </p>
-                <p className="mono-label text-ink-soft/60 mb-4">{s.unit}</p>
-                <p className="text-sm text-ink-soft leading-relaxed">{s.desc}</p>
-              </div>
-            ))}
+          <div className="reveal-up delay-100">
+            <CostCalculator />
           </div>
         </div>
       </section>

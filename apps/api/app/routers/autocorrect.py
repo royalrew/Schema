@@ -3,6 +3,7 @@
 Autokorrigering av kända schema-problem.
 Utför riktade fixar utan att regenerera hela schemat.
 """
+import copy
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException
@@ -32,6 +33,82 @@ class FixResult(BaseModel):
 
 def _is_weekend(d: date) -> bool:
     return d.weekday() >= 5
+
+
+def _simulate_dag_tidig(
+    schedule: list[dict],
+    target_date: date,
+    employees: list[Employee],
+    force_employee_id: str | None = None,
+) -> tuple[list[dict], str | None]:
+    """
+    Simulerar tillsättning av DAG_TIDIG på target_date utan att spara till DB.
+    Returnerar (modifierat schema, vald emp_id) eller (oförändrat schema, None) om ingen kandidat finns.
+    """
+    schedule = copy.deepcopy(schedule)
+
+    sched_idx: dict[tuple, int] = {}
+    for i, sd in enumerate(schedule):
+        sched_idx[(sd["employee_id"], sd["date"])] = i
+
+    datestr = target_date.isoformat()
+
+    has_tidig = any(
+        schedule[sched_idx[(e.id, datestr)]].get("shift", {}).get("shift_type") == "dag_tidig"
+        for e in employees
+        if (e.id, datestr) in sched_idx
+    )
+    if has_tidig:
+        return schedule, None
+
+    helger_count: dict[str, int] = {e.id: 0 for e in employees}
+    for sd in schedule:
+        shift = sd.get("shift")
+        if shift and not shift.get("is_unbooked"):
+            d = date.fromisoformat(sd["date"])
+            if _is_weekend(d):
+                helger_count[sd["employee_id"]] = helger_count.get(sd["employee_id"], 0) + 1
+
+    if force_employee_id:
+        candidates = [e for e in employees if e.id == force_employee_id]
+    else:
+        candidates = []
+        for emp in employees:
+            if emp.contract_type != ContractType.VARIERANDE:
+                continue
+            idx = sched_idx.get((emp.id, datestr))
+            if idx is not None:
+                sd = schedule[idx]
+                if sd.get("shift"):
+                    continue
+                if sd.get("absence"):
+                    continue
+            is_we = _is_weekend(target_date)
+            if is_we and helger_count.get(emp.id, 0) >= 3:
+                continue
+            candidates.append(emp)
+        candidates.sort(key=lambda e: helger_count.get(e.id, 0))
+
+    if not candidates:
+        return schedule, None
+
+    chosen = candidates[0]
+    start_dt = datetime(target_date.year, target_date.month, target_date.day, 6, 45, tzinfo=STOCKHOLM)
+    end_dt = datetime(target_date.year, target_date.month, target_date.day, 16, 0, tzinfo=STOCKHOLM)
+    shift_data = {
+        "shift_type": "dag_tidig",
+        "segments": [{"start_time": start_dt.isoformat(), "end_time": end_dt.isoformat()}],
+        "is_unbooked": False,
+        "note": "Autokorrigerad — 06:45-täckning",
+    }
+
+    key = (chosen.id, datestr)
+    if key in sched_idx:
+        schedule[sched_idx[key]] = {**schedule[sched_idx[key]], "shift": shift_data}
+    else:
+        schedule.append({"date": datestr, "employee_id": chosen.id, "shift": shift_data, "absence": None})
+
+    return schedule, chosen.id
 
 
 @router.post("/{group}/{year}/{month}/dag-tidig", response_model=FixResult)

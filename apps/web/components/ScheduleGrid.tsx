@@ -322,12 +322,13 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
             </div>
           )}
 
-          {/* AI-analys — bara i korrigeringsläge */}
+          {/* AI-varningshantering — bara i korrigeringsläge när soft warnings finns */}
           {phase === "correction" && schedule.length > 0 && (
             <AIModal
               group={group}
               year={year}
               month={month}
+              validation={validation}
               onScheduleUpdated={async () => {
                 const [sched] = await Promise.all([
                   fetchSchedule(group, year, month).catch(() => []),
