@@ -32,6 +32,8 @@ def _row_to_employee(row: EmployeeRow) -> Employee:
         is_dagansvarig=bool(row.is_dagansvarig or False),
         is_planerare=bool(row.is_planerare or False),
         percentage=float(row.percentage if row.percentage is not None else 1.0),
+        target_days_per_month=row.target_days_per_month,
+        target_evenings_per_month=row.target_evenings_per_month,
     )
 
 
@@ -96,6 +98,8 @@ class UpdateEmployeeAttributesRequest(BaseModel):
     is_dagansvarig: Optional[bool] = None
     is_planerare: Optional[bool] = None
     percentage: Optional[float] = None
+    target_days_per_month: Optional[int] = None
+    target_evenings_per_month: Optional[int] = None
 
 
 @router.get("", response_model=list[Employee])
@@ -307,6 +311,8 @@ async def upsert_employee(
         existing.is_dagansvarig = employee.is_dagansvarig
         existing.is_planerare = employee.is_planerare
         existing.percentage = employee.percentage
+        existing.target_days_per_month = employee.target_days_per_month
+        existing.target_evenings_per_month = employee.target_evenings_per_month
         row = existing
     else:
         row = EmployeeRow(
@@ -321,6 +327,8 @@ async def upsert_employee(
             is_dagansvarig=employee.is_dagansvarig,
             is_planerare=employee.is_planerare,
             percentage=employee.percentage,
+            target_days_per_month=employee.target_days_per_month,
+            target_evenings_per_month=employee.target_evenings_per_month,
         )
         db.add(row)
     await db.commit()
@@ -374,6 +382,10 @@ async def update_employee_attributes(
         if not (0.0 <= req.percentage <= 1.0):
             raise HTTPException(status_code=422, detail="Tjänstgöringsgrad måste vara mellan 0.0 och 1.0.")
         row.percentage = req.percentage
+    if "target_days_per_month" in req.model_fields_set:
+        row.target_days_per_month = req.target_days_per_month
+    if "target_evenings_per_month" in req.model_fields_set:
+        row.target_evenings_per_month = req.target_evenings_per_month
         
     await db.commit()
     await db.refresh(row)

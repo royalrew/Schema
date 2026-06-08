@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
 import { sv } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, LogOut, Users, Settings, ClipboardList, AlertTriangle, CheckCircle2, Clock, Plus, Shield, BookOpen } from "lucide-react";
+import { ChevronLeft, ChevronRight, LogOut, Users, Settings, ClipboardList, AlertTriangle, CheckCircle2, Clock, Plus, Shield, BookOpen, Scale } from "lucide-react";
 import { getUser, clearToken, isLoggedIn } from "@/lib/auth";
 import { WelcomeGuide } from "@/components/WelcomeGuide";
 import { ChangePasswordModal } from "@/components/ChangePasswordModal";
@@ -128,6 +128,9 @@ export default function Dashboard() {
             </Link>
             <Link href="/roller" className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors">
               <Shield size={14} /> Roller
+            </Link>
+            <Link href="/systembeskrivning" className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors">
+              <Scale size={14} /> Systembeskrivning
             </Link>
             <Link href="/rag" className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors">
               <BookOpen size={14} /> RAG

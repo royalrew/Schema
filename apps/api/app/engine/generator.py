@@ -159,6 +159,15 @@ def generate_schedule(
     # Spåra: senaste passlutet per medarbetare (för dygnsvila-check)
     last_shift_end: dict[str, datetime] = {}
 
+    # Spåra: antal tilldelade dag- och kvällspass per medarbetare
+    scheduled_days_count: dict[str, int] = defaultdict(int)
+    scheduled_evenings_count: dict[str, int] = defaultdict(int)
+
+    # Spåra: blockerade dagpass på grund av önskemålskorrigering
+    blocked_day_shifts: set[tuple[str, date]] = set()
+    # Spåra: blockerade kvällspass på grund av önskemålskorrigering
+    blocked_evening_shifts: set[tuple[str, date]] = set()
+
     # Resultat
     assignments: dict[tuple[str, date], ScheduleDay] = {}
     decisions: list[str] = []
@@ -195,6 +204,10 @@ def generate_schedule(
         employees_by_group[emp.group].append(emp)
 
     def available(emp: Employee, d: date, shift_type: ShiftType) -> bool:
+        if (emp.id, d) in blocked_day_shifts and shift_type in (ShiftType.DAG, ShiftType.DAG_TIDIG):
+            return False
+        if (emp.id, d) in blocked_evening_shifts and shift_type in (ShiftType.KVAL_KORT, ShiftType.KVAL_LANG):
+            return False
         if d in absence_dates[emp.id]:
             return False
         if d in veto_dates[emp.id]:
@@ -203,6 +216,22 @@ def generate_schedule(
         wish_for_day = wish_schedule_idx.get(emp.id, {}).get(d, "NOT_SET")
         if wish_for_day is None:  # None = explicit önskan om ledighet
             return False
+            
+        # Om personen har ett önskat pass av en specifik typ, tillåt endast pass av den kategorin
+        if wish_for_day != "NOT_SET":
+            wished_val = wish_for_day.value if hasattr(wish_for_day, "value") else str(wish_for_day)
+            
+            is_day_shift = shift_type in (ShiftType.DAG, ShiftType.DAG_TIDIG)
+            is_kval_shift = shift_type in (ShiftType.KVAL_KORT, ShiftType.KVAL_LANG)
+            is_natt_shift = shift_type == ShiftType.NATT
+            
+            if wished_val in (ShiftType.DAG.value, ShiftType.DAG_TIDIG.value) and not is_day_shift:
+                return False
+            if wished_val in (ShiftType.KVAL_KORT.value, ShiftType.KVAL_LANG.value) and not is_kval_shift:
+                return False
+            if wished_val == ShiftType.NATT.value and not is_natt_shift:
+                return False
+
         weekday = d.weekday()
         allowed = CONTRACT_RULES.get(emp.contract_type, {}).get("allowed_weekdays", list(range(7)))
         if weekday not in allowed:
@@ -280,7 +309,7 @@ def generate_schedule(
             return 1  # denna dag är oönskad
         return 0
 
-    def priority_key(emp: Employee, d: date) -> tuple[int, int, int, float]:
+    def priority_key(emp: Employee, d: date, category: str = "any") -> tuple[int, int, int, int, int, float]:
         target = CONTRACT_RULES.get(emp.contract_type, {}).get("weekly_hours", 37.0)
         weeks = (period_end - period_start).days / 7.0
         target_total = target * weeks * emp.percentage
@@ -294,9 +323,17 @@ def generate_schedule(
         # Önskeschema: personen har lagt in en specifik shift_type → stark boost
         wished_stype = wish_schedule_idx.get(emp.id, {}).get(d, "NOT_SET")
         has_wish_stype = 0 if (wished_stype not in (None, "NOT_SET")) else 1
+
+        # Mjuk regel: Har medarbetaren nått sitt önskade målantal pass för denna kategori?
+        reached_target = 0
+        if category == "day" and emp.target_days_per_month is not None:
+            reached_target = 1 if scheduled_days_count[emp.id] >= emp.target_days_per_month else 0
+        elif category == "evening" and emp.target_evenings_per_month is not None:
+            reached_target = 1 if scheduled_evenings_count[emp.id] >= emp.target_evenings_per_month else 0
+
         # Mjuka krav
         soft_pen = _soft_penalty(emp, d)
-        return (has_wish_stype, has_wish, needs_helg, soft_pen, ratio)
+        return (has_wish_stype, has_wish, needs_helg, reached_target, soft_pen, ratio)
 
     def assign(emp: Employee, d: date, shift_type: ShiftType, reason: str = "") -> None:
         shift = _make_shift(shift_type, d, templates, employee=emp)
@@ -315,6 +352,12 @@ def generate_schedule(
 
         last_shift_end[emp.id] = shift.segments[-1].end_time
         work_days_per_emp[emp.id].add(d)
+
+        # Räkna pass för önskade målantal per kategori
+        if shift_type in (ShiftType.DAG, ShiftType.DAG_TIDIG):
+            scheduled_days_count[emp.id] += 1
+        elif shift_type in (ShiftType.KVAL_KORT, ShiftType.KVAL_LANG):
+            scheduled_evenings_count[emp.id] += 1
 
         # Registrera beslut
         if reason:
@@ -431,11 +474,94 @@ def generate_schedule(
             kval_needed = day_krav.kval_heads if day_krav else 2
             natt_needed = day_krav.natt_heads if day_krav else 0
 
+            # --- Önskemålskorrigering för krockande dagpass ---
+            day_wishing_candidates = []
+            for emp in group_emps:
+                # Kolla om personen har ett önskemål om dagpass denna dag
+                has_day_wish = False
+                if current in wish_dates.get(emp.id, set()):
+                    has_day_wish = True
+                else:
+                    wished_stype = wish_schedule_idx.get(emp.id, {}).get(current)
+                    if wished_stype is not None:
+                        wished_val = wished_stype.value if hasattr(wished_stype, "value") else str(wished_stype)
+                        if wished_val in (ShiftType.DAG.value, ShiftType.DAG_TIDIG.value):
+                            has_day_wish = True
+
+                # Om personen har önskemål och är tillgänglig för dagpass
+                if has_day_wish and (available(emp, current, ShiftType.DAG) or available(emp, current, ShiftType.DAG_TIDIG)):
+                    day_wishing_candidates.append(emp)
+
+            if len(day_wishing_candidates) > max(fm_needed, 0):
+                prioritized = []
+                ordinary = []
+                for emp in day_wishing_candidates:
+                    if emp.is_dagansvarig or emp.contract_type == ContractType.DAGTID:
+                        prioritized.append(emp)
+                    else:
+                        ordinary.append(emp)
+
+                slots_left = max(0, fm_needed - len(prioritized))
+                # Sortera de vanliga medarbetarna efter prioritet
+                ordinary.sort(key=lambda e: (priority_key(e, current, category="day"), e.id))
+
+                # De som inte ryms flyttas till kvällspass
+                to_shift = ordinary[slots_left:]
+                for emp in to_shift:
+                    # Flytta från dag-önskemål till kvällspass (KVAL_KORT)
+                    if current in wish_dates.get(emp.id, set()):
+                        wish_dates[emp.id].remove(current)
+
+                    # Skapa/uppdatera specifikt önskemål om kvällspass i indexet
+                    wish_schedule_idx[emp.id][current] = ShiftType.KVAL_KORT
+
+                    # Blockera dem från att få dagpass denna dag
+                    blocked_day_shifts.add((emp.id, current))
+
+                    # Logga beslutet på svenska
+                    decisions.append(
+                        f"{current.isoformat()}: [Önskemålskorrigering] {emp.name} flyttades till kvällspass då dagpass prioriterades för dagansvariga."
+                    )
+            # --- Önskemålskorrigering för krockande kvällspass ---
+            evening_wishing_candidates = []
+            for emp in group_emps:
+                has_evening_wish = False
+                wished_stype = wish_schedule_idx.get(emp.id, {}).get(current)
+                if wished_stype is not None:
+                    wished_val = wished_stype.value if hasattr(wished_stype, "value") else str(wished_stype)
+                    if wished_val in (ShiftType.KVAL_KORT.value, ShiftType.KVAL_LANG.value):
+                        has_evening_wish = True
+                elif emp.contract_type == ContractType.KVAL and current in wish_dates.get(emp.id, set()):
+                    has_evening_wish = True
+
+                if has_evening_wish and (available(emp, current, ShiftType.KVAL_KORT) or available(emp, current, ShiftType.KVAL_LANG)):
+                    evening_wishing_candidates.append(emp)
+
+            if len(evening_wishing_candidates) > max(kval_needed, 0):
+                prioritized = []
+                ordinary = []
+                for emp in evening_wishing_candidates:
+                    if emp.contract_type == ContractType.KVAL:
+                        prioritized.append(emp)
+                    else:
+                        ordinary.append(emp)
+
+                slots_left = max(0, kval_needed - len(prioritized))
+                ordinary.sort(key=lambda e: (priority_key(e, current, category="evening"), e.id))
+
+                to_shift = ordinary[slots_left:]
+                for emp in to_shift:
+                    wish_schedule_idx[emp.id][current] = ShiftType.DAG
+                    blocked_evening_shifts.add((emp.id, current))
+                    decisions.append(
+                        f"{current.isoformat()}: [Önskemålskorrigering] {emp.name} flyttades till dagpass då kvällspass prioriterades för kvällspersonal."
+                    )
+
             # --- 1. DAG_TIDIG (06:45-regeln) — exakt 1 per grupp per dag ---
             varierande_emps = [e for e in group_emps if e.contract_type == ContractType.VARIERANDE]
             dag_tidig_candidates = sorted(
                 [e for e in varierande_emps if available(e, current, ShiftType.DAG_TIDIG)],
-                key=lambda e: priority_key(e, current),
+                key=lambda e: priority_key(e, current, category="day"),
             )
 
             if dag_tidig_candidates:
@@ -455,7 +581,7 @@ def generate_schedule(
             fm_candidates = sorted(
                 [e for e in group_emps if available(e, current, ShiftType.DAG)
                  and e.contract_type not in (ContractType.KVAL, ContractType.NATT)],
-                key=lambda e: priority_key(e, current),
+                key=lambda e: priority_key(e, current, category="day"),
             )
             assigned_dag = 0
             for emp in fm_candidates[:max(fm_needed, 0)]:
@@ -466,7 +592,7 @@ def generate_schedule(
             # --- 3. Fyll kval-slots ---
             kval_candidates = sorted(
                 [e for e in group_emps if available(e, current, ShiftType.KVAL_KORT)],
-                key=lambda e: priority_key(e, current),
+                key=lambda e: priority_key(e, current, category="evening"),
             )
             assigned_kval = 0
             for i, emp in enumerate(kval_candidates[:max(kval_needed, 0)]):

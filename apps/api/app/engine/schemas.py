@@ -141,6 +141,8 @@ class Employee(BaseModel):
     is_dagansvarig: bool = Field(False, description="Dagansvarig — aldrig kväll/natt, alltid dag")
     is_planerare: bool = Field(False, description="Planerare — har prioritet på planeringstid vid överkapacitet")
     percentage: float = Field(1.0, description="Tjänstgöringsgrad (t.ex. 0.5 för 50%, 1.0 för 100%)")
+    target_days_per_month: Optional[int] = Field(None, description="Önskat antal dagpass per månad (mjuk regel)")
+    target_evenings_per_month: Optional[int] = Field(None, description="Önskat antal kvällspass per månad (mjuk regel)")
 
 class ScheduleDay(BaseModel):
     """Schemaläggningen för en enskild medarbetare en specifik dag."""

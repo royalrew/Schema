@@ -45,6 +45,14 @@ async def create_tables():
         except Exception:
             pass
         try:
+            await conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS target_days_per_month INTEGER;"))
+        except Exception:
+            pass
+        try:
+            await conn.execute(text("ALTER TABLE employees ADD COLUMN IF NOT EXISTS target_evenings_per_month INTEGER;"))
+        except Exception:
+            pass
+        try:
             await conn.execute(text("ALTER TABLE schedule_periods ADD COLUMN IF NOT EXISTS decisions TEXT;"))
         except Exception:
             pass

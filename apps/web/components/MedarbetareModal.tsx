@@ -33,6 +33,8 @@ export function MedarbetareModal({ employee, onSave, onClose }: Props) {
   const [isDagansvarig, setIsDagansvarig] = useState(employee?.is_dagansvarig ?? false);
   const [isPlanerare, setIsPlanerare] = useState(employee?.is_planerare ?? false);
   const [percentage, setPercentage] = useState(employee?.percentage ? employee.percentage * 100 : 100);
+  const [targetDays, setTargetDays] = useState<number | "">(employee?.target_days_per_month ?? "");
+  const [targetEvenings, setTargetEvenings] = useState<number | "">(employee?.target_evenings_per_month ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,6 +53,8 @@ export function MedarbetareModal({ employee, onSave, onClose }: Props) {
         is_dagansvarig: isDagansvarigDisabled ? false : isDagansvarig,
         is_planerare: contractType === "vikarie" ? false : isPlanerare,
         percentage: percentage / 100,
+        target_days_per_month: contractType === "varierande" && targetDays !== "" ? Number(targetDays) : null,
+        target_evenings_per_month: contractType === "varierande" && targetEvenings !== "" ? Number(targetEvenings) : null,
       } as Parameters<typeof saveEmployee>[0]);
       onSave(saved);
     } catch (e: unknown) {
@@ -132,6 +136,39 @@ export function MedarbetareModal({ employee, onSave, onClose }: Props) {
               className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40"
             />
           </div>
+
+          {contractType === "varierande" && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1.5">
+                  Önskade dagar/mån (mjuk)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="31"
+                  value={targetDays}
+                  onChange={e => setTargetDays(e.target.value === "" ? "" : Number(e.target.value))}
+                  placeholder="Mål antal dagar"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1.5">
+                  Önskade kvällar/mån (mjuk)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="31"
+                  value={targetEvenings}
+                  onChange={e => setTargetEvenings(e.target.value === "" ? "" : Number(e.target.value))}
+                  placeholder="Mål antal kvällar"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Dagansvarig */}
           <label className={`flex items-start gap-3 p-3 rounded-xl border border-gray-200 transition-colors ${

@@ -25,6 +25,8 @@ class EmployeeRow(Base):
     is_dagansvarig: Mapped[bool] = mapped_column(default=False)        # Aldrig kväll/natt, alltid dag
     is_planerare: Mapped[bool] = mapped_column(default=False)
     percentage: Mapped[float] = mapped_column(default=1.0)
+    target_days_per_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target_evenings_per_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class SchedulePeriodRow(Base):

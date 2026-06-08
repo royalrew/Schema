@@ -1,4 +1,4 @@
-import type { Employee, ScheduleDay, GenerateResponse, PeriodInfo, Phase, Bemanningskrav, HourlyRequirement } from "./types";
+import type { Employee, ScheduleDay, GenerateResponse, PeriodInfo, Phase, Bemanningskrav, HourlyRequirement, ValidationResult } from "./types";
 import { getToken, clearToken } from "./auth";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:9000";
@@ -485,6 +485,34 @@ export async function saveOrganizationSettings(settings: OrganizationSettings): 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail ?? "Kunde inte spara faktureringsinställningar");
+  }
+  return res.json();
+}
+
+
+export interface UpdateScheduleDayData {
+  employee_id: string;
+  date: string;
+  shift_type: string | null;
+  absence_type: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  note: string | null;
+}
+
+export async function updateScheduleDay(
+  group: string,
+  year: number,
+  month: number,
+  data: UpdateScheduleDayData
+): Promise<{ schedule: ScheduleDay[]; decisions: string[]; validation: ValidationResult }> {
+  const res = await apiFetch(`${BASE}/api/schedule/${encodeURIComponent(group)}/${year}/${month}/update-day`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail ?? "Kunde inte spara ändringen");
   }
   return res.json();
 }

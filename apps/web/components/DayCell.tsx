@@ -33,11 +33,11 @@ interface Props {
   errors: ValidationError[];
   isWeekend: boolean;
   isWished?: boolean;
-  canWish?: boolean;
-  onToggleWish?: () => void;
+  canEdit?: boolean;
+  onEdit?: () => void;
 }
 
-export function DayCell({ day, errors, isWeekend, isWished, canWish, onToggleWish }: Props) {
+export function DayCell({ day, errors, isWeekend, isWished, canEdit, onEdit }: Props) {
   const hasHardError = errors.some((e) => e.severity === "hard");
   const hasSoftError = errors.some((e) => e.severity === "soft");
   const cellBg = isWeekend ? "bg-blue-50/40" : "bg-white";
@@ -83,9 +83,9 @@ export function DayCell({ day, errors, isWeekend, isWished, canWish, onToggleWis
 
   return (
     <td
-      className={`relative border border-gray-100 w-7 h-9 text-center align-middle ${cellBg} ${canWish ? "cursor-pointer hover:bg-green-50" : ""} ${isWished && !style ? "bg-green-100" : ""}`}
-      title={[...tooltipLines, isWished ? "★ Önskedag" : ""].filter(Boolean).join("\n")}
-      onClick={canWish ? onToggleWish : undefined}
+      className={`relative border border-gray-100 w-7 h-9 text-center align-middle ${cellBg} ${canEdit ? "cursor-pointer hover:bg-blue-50/50" : ""} ${isWished && !style ? "bg-green-100" : ""}`}
+      title={[...tooltipLines, isWished ? "★ Önskedag" : "", canEdit ? "Klicka för att korrigera pass/frånvaro" : ""].filter(Boolean).join("\n")}
+      onClick={canEdit ? onEdit : undefined}
     >
       {style ? (
         <span

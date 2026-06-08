@@ -2,7 +2,7 @@
 import calendar
 import json
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 STOCKHOLM = ZoneInfo("Europe/Stockholm")
@@ -20,7 +20,7 @@ from app.engine.schemas import (
     ScheduleDay, Shift, ShiftSegment, ShiftType, Bemanningskrav, ValidationResult,
     SoftConstraint, WishShiftEntry,
 )
-from app.engine.generator import generate_schedule, _make_shift, _build_templates
+from app.engine.generator import generate_schedule, _make_shift, _build_templates, _DELAD_TUR_FM, _DELAD_TUR_KVAL
 from app.engine.solver import validate_schedule
 from app.routers.staffing import _default_krav, _krav_from_template, StaffingTemplate
 
@@ -56,6 +56,22 @@ class AptRequest(BaseModel):
 
 class PhaseUpdateRequest(BaseModel):
     phase: str  # wish | correction | attested
+
+
+class UpdateScheduleDayRequest(BaseModel):
+    employee_id: str
+    date: str  # YYYY-MM-DD
+    shift_type: Optional[str] = None  # ShiftType value, or None
+    absence_type: Optional[str] = None  # AbsenceType value, or None
+    start_time: Optional[str] = None  # "HH:MM", or None
+    end_time: Optional[str] = None  # "HH:MM", or None
+    note: Optional[str] = None
+
+
+class UpdateScheduleDayResponse(BaseModel):
+    schedule: list[ScheduleDay]
+    decisions: list[str]
+    validation: ValidationResult
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -542,4 +558,237 @@ async def generate(
         stats=stats,
         phase="correction",
         decisions=_parse_decisions(decisions),
+    )
+
+
+@router.post("/schedule/{group}/{year}/{month}/update-day", response_model=UpdateScheduleDayResponse)
+async def update_schedule_day(
+    group: str, year: int, month: int,
+    req: UpdateScheduleDayRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRow = Depends(require_admin_or_schemaansvarig),
+):
+    if current_user.username.startswith("demo_"):
+        group = f"Granbacken ({current_user.username})"
+
+    # 1. Hämta medarbetaren för att verifiera existens och få fullständigt namn
+    emp_stmt = select(EmployeeRow).where(EmployeeRow.id == req.employee_id)
+    emp_row = (await db.execute(emp_stmt)).scalar_one_or_none()
+    if not emp_row:
+        raise HTTPException(status_code=404, detail="Medarbetaren hittades inte.")
+
+    # 2. Hämta schemaperioden
+    stmt = select(SchedulePeriodRow).where(
+        SchedulePeriodRow.group_name == group,
+        SchedulePeriodRow.year == year,
+        SchedulePeriodRow.month == month,
+    )
+    period_row = (await db.execute(stmt)).scalar_one_or_none()
+
+    # 3. Kontrollera om perioden är attesterad (låst)
+    if period_row and period_row.phase == "attested":
+        raise HTTPException(status_code=400, detail="Perioden är attesterad och kan inte ändras.")
+
+    # 4. Konstruera Shift eller Absence
+    d = date.fromisoformat(req.date)
+    shift_obj = None
+    absence_obj = None
+
+    if req.absence_type:
+        absence_obj = Absence(date=d, absence_type=AbsenceType(req.absence_type))
+    elif req.shift_type:
+        stype = ShiftType(req.shift_type)
+        
+        # Hämta passtider (configs) för att veta standardtider om de saknas i förfrågan
+        cfg_stmt = select(ShiftConfigRow).where(
+            (ShiftConfigRow.group_name == group) | ShiftConfigRow.group_name.is_(None)
+        )
+        cfg_rows = (await db.execute(cfg_stmt)).scalars().all()
+        seen: dict[str, dict] = {}
+        for r in sorted(cfg_rows, key=lambda x: (x.group_name is None)):
+            seen[r.shift_type] = {"shift_type": r.shift_type, "start_time": r.start_time, "end_time": r.end_time}
+        templates = _build_templates(list(seen.values()))
+
+        start_t = None
+        end_t = None
+
+        if req.start_time and req.end_time:
+            sh, sm = map(int, req.start_time.split(":"))
+            eh, em = map(int, req.end_time.split(":"))
+            from datetime import time as dt_time
+            start_t = dt_time(sh, sm)
+            end_t = dt_time(eh, em)
+        else:
+            if stype != ShiftType.DELAD_TUR:
+                from datetime import time as dt_time
+                start_t, end_t = templates.get(stype, (dt_time(7, 0), dt_time(16, 0)))
+
+        # Bygg segment
+        if stype == ShiftType.DELAD_TUR:
+            fm_s, fm_e = _DELAD_TUR_FM
+            kval_s, kval_e = _DELAD_TUR_KVAL
+            segments = [
+                ShiftSegment(
+                    start_time=datetime(d.year, d.month, d.day, fm_s.hour, fm_s.minute, tzinfo=STOCKHOLM),
+                    end_time=datetime(d.year, d.month, d.day, fm_e.hour, fm_e.minute, tzinfo=STOCKHOLM),
+                ),
+                ShiftSegment(
+                    start_time=datetime(d.year, d.month, d.day, kval_s.hour, kval_s.minute, tzinfo=STOCKHOLM),
+                    end_time=datetime(d.year, d.month, d.day, kval_e.hour, kval_e.minute, tzinfo=STOCKHOLM),
+                ),
+            ]
+        else:
+            start_dt = datetime(d.year, d.month, d.day, start_t.hour, start_t.minute, tzinfo=STOCKHOLM)
+            if stype == ShiftType.NATT:
+                next_day = d + timedelta(days=1)
+                end_dt = datetime(next_day.year, next_day.month, next_day.day, end_t.hour, end_t.minute, tzinfo=STOCKHOLM)
+            else:
+                end_dt = datetime(d.year, d.month, d.day, end_t.hour, end_t.minute, tzinfo=STOCKHOLM)
+            segments = [ShiftSegment(start_time=start_dt, end_time=end_dt)]
+
+        shift_obj = Shift(
+            shift_type=stype,
+            segments=segments,
+            is_unbooked=(stype == ShiftType.OBOKAD),
+            note=req.note
+        )
+
+    # 5. Skapa den nya dagen
+    new_day = ScheduleDay(
+        date=d,
+        employee_id=req.employee_id,
+        shift=shift_obj,
+        absence=absence_obj,
+        assigned_group=None
+    )
+    new_day_dict = _schedule_day_to_dict(new_day)
+
+    # 6. Spara i period_row
+    schedule_list = list(period_row.schedule or []) if period_row else []
+    found_idx = -1
+    for idx, sd_dict in enumerate(schedule_list):
+        if sd_dict.get("employee_id") == req.employee_id and sd_dict.get("date") == req.date:
+            found_idx = idx
+            break
+
+    if found_idx >= 0:
+        schedule_list[found_idx] = new_day_dict
+    else:
+        schedule_list.append(new_day_dict)
+
+    # Skapa tidsstämplad audit logg
+    timestamp_str = datetime.now(STOCKHOLM).strftime("%Y-%m-%d %H:%M")
+    editor_name = current_user.full_name or current_user.username
+    employee_name = emp_row.name
+    
+    change_desc = ""
+    if absence_obj:
+        absence_label = {
+            "sem": "Semester", "FL": "Föräldraledighet", "TJL": "Tjänsteledighet", 
+            "sjuk": "Sjukskrivning", "VAB": "VAB", "KOM": "Kompledig", "STU": "Studieledighet"
+        }.get(absence_obj.absence_type.value, absence_obj.absence_type.value)
+        change_desc = f"frånvaro ({absence_label})"
+    elif shift_obj:
+        shift_label = {
+            "dag_tidig": "Dag tidig (06:45)", "dag": "Dag", "kval_kort": "Kväll kort", 
+            "kval_lang": "Kväll lång", "delad_tur": "Delad tur", "natt": "Natt", 
+            "obokad": "Obokad", "APT": "APT", "kontorstid": "Kontorstid", "planeringstid": "Planeringstid"
+        }.get(shift_obj.shift_type.value, shift_obj.shift_type.value)
+        
+        if req.start_time and req.end_time:
+            change_desc = f"pass {shift_label} ({req.start_time}–{req.end_time})"
+        else:
+            change_desc = f"pass {shift_label}"
+    else:
+        change_desc = "Ledig"
+
+    log_entry = f"[{timestamp_str}] [Manuell ändring] {editor_name} ändrade passet för {employee_name} den {req.date} till {change_desc}."
+
+    if not period_row:
+        period_row = SchedulePeriodRow(
+            group_name=group,
+            year=year,
+            month=month,
+            phase="correction",
+            schedule=schedule_list,
+            decisions=[log_entry]
+        )
+        db.add(period_row)
+    else:
+        period_row.schedule = schedule_list
+        current_decisions = list(period_row.decisions or [])
+        current_decisions.append(log_entry)
+        period_row.decisions = current_decisions
+
+    await db.commit()
+
+    # 7. Kör validering för att ge omedelbar feedback
+    # Hämta alla anställda i gruppen
+    emp_stmt = select(EmployeeRow).where(EmployeeRow.group_name == group)
+    emp_rows = (await db.execute(emp_stmt)).scalars().all()
+    employees = [_row_to_employee(r) for r in emp_rows]
+
+    # Hämta bemanningskrav
+    krav_stmt = select(BemanningskravRow).where(
+        BemanningskravRow.group_name == group,
+        BemanningskravRow.year == year,
+        BemanningskravRow.month == month,
+    )
+    krav_row = (await db.execute(krav_stmt)).scalar_one_or_none()
+    
+    krav = []
+    if krav_row and krav_row.requirements:
+        krav = [
+            Bemanningskrav(
+                group=Group(k["group"]),
+                date=date.fromisoformat(k["date"]),
+                fm_heads=k.get("fm_heads", 2),
+                em_heads=k.get("em_heads", 0),
+                kval_heads=k.get("kval_heads", 2),
+                natt_heads=k.get("natt_heads", 0),
+            )
+            for k in krav_row.requirements
+        ]
+    else:
+        # Fallback på standardbehov via template eller default
+        tmpl_row = (await db.execute(
+            select(StaffingTemplateRow).where(StaffingTemplateRow.group_name == group)
+        )).scalar_one_or_none()
+        if tmpl_row and tmpl_row.per_weekday:
+            from app.routers.staffing import DayKrav, StaffingTemplate, _krav_from_template
+            tmpl = StaffingTemplate(
+                group_name=group,
+                per_weekday=[DayKrav(**d) for d in tmpl_row.per_weekday],
+            )
+            krav = _krav_from_template(tmpl, Group(group), year, month)
+        else:
+            krav = _default_krav(Group(group), year, month)
+
+    own_days = [_dict_to_schedule_day(sd) for sd in period_row.schedule]
+
+    # Hämta inlånad personal
+    other_stmt = select(SchedulePeriodRow).where(
+        SchedulePeriodRow.group_name != group,
+        SchedulePeriodRow.year == year,
+        SchedulePeriodRow.month == month,
+    )
+    other_result = await db.execute(other_stmt)
+    other_rows = other_result.scalars().all()
+
+    borrowed_days = []
+    for r in other_rows:
+        if not r.schedule:
+            continue
+        for sd_dict in r.schedule:
+            sd = _dict_to_schedule_day(sd_dict)
+            if sd.assigned_group == group:
+                borrowed_days.append(sd)
+
+    full_schedule = own_days + borrowed_days
+    validation_res = validate_schedule(full_schedule, employees, krav)
+
+    return UpdateScheduleDayResponse(
+        schedule=full_schedule,
+        decisions=_parse_decisions(period_row.decisions),
+        validation=validation_res
     )

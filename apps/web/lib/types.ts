@@ -59,6 +59,8 @@ export interface Employee {
   is_dagansvarig?: boolean;
   is_planerare?: boolean;
   percentage?: number;
+  target_days_per_month?: number | null;
+  target_evenings_per_month?: number | null;
 }
 
 export interface ScheduleDay {

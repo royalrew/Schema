@@ -205,6 +205,41 @@ def validate_schedule(
                         severity="hard"
                     ))
 
+        # --- REGEL: ÖNSKAT ANTAL DAGAR / KVÄLLAR PER MÅNAD (mjuk) ---
+        if emp.target_days_per_month is not None or emp.target_evenings_per_month is not None:
+            actual_days = sum(
+                1 for d in days
+                if d.shift and d.shift.shift_type in (ShiftType.DAG, ShiftType.DAG_TIDIG)
+            )
+            actual_evenings = sum(
+                1 for d in days
+                if d.shift and d.shift.shift_type in (ShiftType.KVAL_KORT, ShiftType.KVAL_LANG)
+            )
+
+            if emp.target_days_per_month is not None and actual_days != emp.target_days_per_month:
+                errors.append(ValidationErrorDetail(
+                    rule_name="mal_dagar_avvikelse",
+                    employee_id=emp.id,
+                    date=days[-1].date if days else date.today(),
+                    message=(
+                        f"Medarbetare {emp.name} har tilldelats {actual_days} dagpass, "
+                        f"men målet är {emp.target_days_per_month}."
+                    ),
+                    severity="soft"
+                ))
+
+            if emp.target_evenings_per_month is not None and actual_evenings != emp.target_evenings_per_month:
+                errors.append(ValidationErrorDetail(
+                    rule_name="mal_kvallar_avvikelse",
+                    employee_id=emp.id,
+                    date=days[-1].date if days else date.today(),
+                    message=(
+                        f"Medarbetare {emp.name} har tilldelats {actual_evenings} kvällspass, "
+                        f"men målet är {emp.target_evenings_per_month}."
+                    ),
+                    severity="soft"
+                ))
+
     # --- REGLER: 06:45 och 21:30-täckning (soft) ---
     from collections import defaultdict as _dd
     emp_group = {emp.id: emp.group for emp in employees}

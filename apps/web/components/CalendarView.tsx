@@ -45,10 +45,10 @@ interface Props {
   month: number;
   phase: Phase;
   aptDate?: string | null;
-  onToggleWish: (empId: string, dateStr: string) => void;
+  onEditDay: (empId: string, dateStr: string, currentDay: ScheduleDay | null) => void;
 }
 
-export function CalendarView({ employees, scheduleIndex, errorIndex, wishIndex, year, month, phase, aptDate, onToggleWish }: Props) {
+export function CalendarView({ employees, scheduleIndex, errorIndex, wishIndex, year, month, phase, aptDate, onEditDay }: Props) {
   const n = getDaysInMonth(new Date(year, month - 1));
   const firstWd = (getDay(new Date(year, month - 1, 1)) + 6) % 7; // 0=Mån
 
@@ -167,7 +167,7 @@ export function CalendarView({ employees, scheduleIndex, errorIndex, wishIndex, 
                   const dateStr = d2s(day);
                   const sd = scheduleIndex.get(emp.id)?.get(dateStr);
                   const isWished = wishIndex.get(emp.id)?.has(dateStr) ?? false;
-                  const canWish = phase === "wish" && !sd?.absence;
+                  const canEdit = phase !== "attested";
                   const isWe = di >= 5;
                   const hasError = (errorIndex.get(dateStr)?.get(emp.id) ?? []).some(e => e.severity === "hard");
 
@@ -200,13 +200,13 @@ export function CalendarView({ employees, scheduleIndex, errorIndex, wishIndex, 
                   return (
                     <div
                       key={di}
-                      onClick={canWish ? () => onToggleWish(emp.id, dateStr) : undefined}
-                      title={canWish ? (isWished ? "Ta bort önskemål" : "Önska den här dagen") : ""}
+                      onClick={canEdit ? () => onEditDay(emp.id, dateStr, sd || null) : undefined}
+                      title={canEdit ? "Klicka för att korrigera pass/frånvaro" : ""}
                       className={[
                         "relative border-l border-gray-100 min-h-12 flex items-center justify-center p-1",
                         isWe ? "bg-blue-50/20" : "",
                         isWished && !badge ? "bg-green-50" : "",
-                        canWish ? "cursor-pointer hover:bg-green-100/70 transition-colors" : "",
+                        canEdit ? "cursor-pointer hover:bg-blue-50/20 hover:shadow-inner transition-all" : "",
                       ].join(" ")}
                     >
                       {badge ? (
@@ -218,7 +218,7 @@ export function CalendarView({ employees, scheduleIndex, errorIndex, wishIndex, 
                         </span>
                       ) : isWished ? (
                         <span className="text-green-500 text-base">★</span>
-                      ) : canWish ? (
+                      ) : canEdit ? (
                         <span className="text-gray-200 text-xs select-none">+</span>
                       ) : null}
 

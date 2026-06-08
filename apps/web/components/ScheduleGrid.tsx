@@ -12,8 +12,9 @@ import { ValidationPanel } from "./ValidationPanel";
 import { PhaseBar } from "./PhaseBar";
 import { AIModal } from "./AIModal";
 import { BeslutsloggPanel } from "./BeslutsloggPanel";
-import { generateSchedule, fetchEmployees, fetchSchedule, fetchPeriodInfo, advancePhase, updateWishes, setApt } from "@/lib/api";
+import { generateSchedule, fetchEmployees, fetchSchedule, fetchPeriodInfo, advancePhase, updateWishes, setApt, fetchShiftConfigs, updateScheduleDay, type UpdateScheduleDayData } from "@/lib/api";
 import { getToken } from "@/lib/auth";
+import { ScheduleDayEditor, type ShiftPreset } from "./ScheduleDayEditor";
 import type { Employee, ScheduleDay, ValidationResult, ValidationError, Phase } from "@/lib/types";
 
 const GROUPS = ["Norra", "Södra", "Östra", "Centrum 1", "Centrum 2", "Centrum 3", "Moholm", "Natten"];
@@ -51,6 +52,20 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
   const [viewMode, setViewMode] = useState<"calendar" | "grid">("calendar");
   const [decisions, setDecisions] = useState<string[]>([]);
   const token = getToken() ?? "";
+  const [editingCell, setEditingCell] = useState<{ empId: string; dateStr: string; day: ScheduleDay | null } | null>(null);
+  const [presets, setPresets] = useState<ShiftPreset[]>([]);
+
+  // Hämta passtider för gruppen
+  useEffect(() => {
+    fetchShiftConfigs(group).then(configs => {
+      setPresets(configs.map(c => ({
+        shift_type: c.shift_type,
+        start_time: c.start_time,
+        end_time: c.end_time,
+        label: c.label ?? c.shift_type,
+      })));
+    }).catch(() => {});
+  }, [group]);
 
   // Hämta fas + anställda + schema när grupp, år eller månad ändras
   useEffect(() => {
@@ -106,21 +121,23 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
     wishIndex.set(emp.id, new Set(emp.wishes));
   }
 
-  const handleToggleWish = useCallback(async (empId: string, dateStr: string) => {
-    const current = wishIndex.get(empId) ?? new Set<string>();
-    const updated = new Set(current);
-    if (updated.has(dateStr)) updated.delete(dateStr);
-    else updated.add(dateStr);
-    const newWishes = Array.from(updated);
+  const handleOpenEditor = useCallback((empId: string, dateStr: string, currentDay: ScheduleDay | null) => {
+    setEditingCell({ empId, dateStr, day: currentDay });
+  }, []);
+
+  const handleSaveManualEdit = useCallback(async (data: UpdateScheduleDayData) => {
+    setError(null);
     try {
-      await updateWishes(empId, newWishes);
-      setEmployees(prev => prev.map(e =>
-        e.id === empId ? { ...e, wishes: newWishes } : e
-      ));
-    } catch {
-      setError("Kunde inte spara önskemål");
+      const res = await updateScheduleDay(group, year, month, data);
+      setSchedule(res.schedule);
+      setDecisions(res.decisions);
+      setValidation(res.validation);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Kunde inte spara ändringen";
+      setError(msg);
+      throw err;
     }
-  }, [employees]);
+  }, [group, year, month]);
 
   // Index: date → employee_id → ValidationError[]
   const errorIndex = new Map<string, Map<string, ValidationError[]>>();
@@ -371,7 +388,7 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
           month={month}
           phase={phase}
           aptDate={aptDate}
-          onToggleWish={handleToggleWish}
+          onEditDay={handleOpenEditor}
         />
       )}
 
@@ -442,6 +459,7 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
                         return sum + (end.getTime() - start.getTime()) / 3_600_000;
                       }, 0);
                     }
+                    const canEdit = phase !== "attested";
                     return (
                       <DayCell
                         key={dateStr}
@@ -449,8 +467,8 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
                         errors={cellErrors}
                         isWeekend={isWeekend(d)}
                         isWished={wishIndex.get(emp.id)?.has(dateStr) ?? false}
-                        canWish={phase === "wish" && !dayData.absence}
-                        onToggleWish={() => handleToggleWish(emp.id, dateStr)}
+                        canEdit={canEdit}
+                        onEdit={() => handleOpenEditor(emp.id, dateStr, dayData)}
                       />
                     );
                   })}
@@ -560,6 +578,23 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
           <span>Regelbrott</span>
         </div>
       </div>
+
+      {editingCell && (
+        <ScheduleDayEditor
+          employeeId={editingCell.empId}
+          employeeName={employees.find(e => e.id === editingCell.empId)?.name ?? editingCell.empId}
+          dateStr={editingCell.dateStr}
+          dateLabel={(() => {
+            const parts = editingCell.dateStr.split("-");
+            const dateObj = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+            return format(dateObj, "EEEE d MMMM", { locale: sv });
+          })()}
+          presets={presets}
+          currentDay={editingCell.day}
+          onSave={handleSaveManualEdit}
+          onClose={() => setEditingCell(null)}
+        />
+      )}
     </div>
   );
 }
