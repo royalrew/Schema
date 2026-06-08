@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Sparkles, Check, X, ChevronRight, Loader2, AlertTriangle, Info } from "lucide-react";
 import type { ValidationError, ValidationResult } from "@/lib/types";
 import { getToken } from "@/lib/auth";
@@ -52,20 +52,21 @@ function formatDate(iso: string) {
 export function AIModal({ group, year, month, validation, onScheduleUpdated }: Props) {
   const [open, setOpen] = useState(false);
   const [skipped, setSkipped] = useState<Set<number>>(new Set());
-  const [currentIdx, setCurrentIdx] = useState(0);
   const [warningState, setWarningState] = useState<WarningState>("loading");
   const [explainResult, setExplainResult] = useState<ExplainResult | null>(null);
   const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null);
+  const [autoSkipping, setAutoSkipping] = useState(false);
 
   const softWarnings = (validation?.errors ?? []).filter(e => e.severity === "soft");
   const remaining = softWarnings.filter((_, i) => !skipped.has(i));
   const current = remaining[0] ?? null;
   const currentOriginalIdx = current ? softWarnings.indexOf(current) : -1;
 
-  async function loadExplanation(warning: ValidationError) {
+  async function loadExplanation(warning: ValidationError, skippedSet: Set<number>) {
     setWarningState("loading");
     setExplainResult(null);
     setFeedback(null);
+    setAutoSkipping(false);
     try {
       const res = await authFetch(`${BASE}/api/ai/explain-warning`, {
         method: "POST",
@@ -75,6 +76,19 @@ export function AIModal({ group, year, month, validation, onScheduleUpdated }: P
       if (!res.ok) throw new Error(data.detail ?? "Fel vid AI-analys");
       setExplainResult(data);
       setWarningState("ready");
+      // Auto-hoppa om ingen fix möjlig
+      if (!data.fix_possible) {
+        setAutoSkipping(true);
+        setTimeout(() => {
+          const origIdx = softWarnings.indexOf(warning);
+          const next = new Set(skippedSet);
+          next.add(origIdx);
+          setSkipped(next);
+          setAutoSkipping(false);
+          const nextWarning = softWarnings.find((_, i) => !next.has(i));
+          if (nextWarning) loadExplanation(nextWarning, next);
+        }, 800);
+      }
     } catch {
       setWarningState("ready");
       setExplainResult(null);
@@ -82,12 +96,12 @@ export function AIModal({ group, year, month, validation, onScheduleUpdated }: P
   }
 
   function openModal() {
+    const empty = new Set<number>();
     setOpen(true);
-    setSkipped(new Set());
-    setCurrentIdx(0);
+    setSkipped(empty);
     setFeedback(null);
     const first = softWarnings[0];
-    if (first) loadExplanation(first);
+    if (first) loadExplanation(first, empty);
   }
 
   function skipCurrent() {
@@ -97,7 +111,8 @@ export function AIModal({ group, year, month, validation, onScheduleUpdated }: P
     setSkipped(next);
     setFeedback(null);
     const nextWarning = softWarnings.find((_, i) => !next.has(i));
-    if (nextWarning) loadExplanation(nextWarning);
+    if (nextWarning) loadExplanation(nextWarning, next);
+    else setSkipped(next);
   }
 
   async function approveFix() {
@@ -120,7 +135,14 @@ export function AIModal({ group, year, month, validation, onScheduleUpdated }: P
       setFeedback({ ok: data.ok, message: data.message });
       if (data.ok) {
         onScheduleUpdated();
-        setTimeout(() => skipCurrent(), 1200);
+        setTimeout(() => {
+          const next = new Set(skipped);
+          next.add(currentOriginalIdx);
+          setSkipped(next);
+          setFeedback(null);
+          const nextWarning = softWarnings.find((_, i) => !next.has(i));
+          if (nextWarning) loadExplanation(nextWarning, next);
+        }, 1200);
       } else {
         setWarningState("ready");
       }
@@ -172,13 +194,14 @@ export function AIModal({ group, year, month, validation, onScheduleUpdated }: P
                   </div>
 
                   {/* AI-förklaring */}
-                  {warningState === "loading" && (
+                  {(warningState === "loading" || autoSkipping) && (
                     <div className="flex items-center gap-2 text-sm text-gray-400 py-2">
-                      <Loader2 size={14} className="animate-spin" /> Analyserar med AI…
+                      <Loader2 size={14} className="animate-spin" />
+                      {autoSkipping ? "Ingen fix möjlig, hoppar vidare…" : "Analyserar med AI…"}
                     </div>
                   )}
 
-                  {warningState !== "loading" && explainResult && (
+                  {warningState !== "loading" && !autoSkipping && explainResult && (
                     <div className="space-y-3">
                       {/* Förklaring */}
                       <div className="bg-purple-50 rounded-xl px-4 py-3 text-sm text-purple-800">
@@ -192,13 +215,6 @@ export function AIModal({ group, year, month, validation, onScheduleUpdated }: P
                           <p className="text-sm text-gray-700">
                             Tilldela <span className="font-semibold">{explainResult.affected_employee_name}</span> passet den {formatDate(explainResult.affected_date)}.
                           </p>
-                        </div>
-                      )}
-
-                      {!explainResult.fix_possible && (
-                        <div className="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 rounded-xl px-4 py-3">
-                          <Info size={14} className="shrink-0" />
-                          Ingen automatisk åtgärd möjlig — hantera manuellt i schemat.
                         </div>
                       )}
 
@@ -225,9 +241,9 @@ export function AIModal({ group, year, month, validation, onScheduleUpdated }: P
                     </div>
                   )}
 
-                  {/* Knappar */}
-                  <div className="flex gap-2 pt-1">
-                    {explainResult?.fix_possible ? (
+                  {/* Knappar — bara synliga när en fix är möjlig */}
+                  {!autoSkipping && explainResult?.fix_possible && (
+                    <div className="flex gap-2 pt-1">
                       <button
                         onClick={approveFix}
                         disabled={warningState === "applying" || warningState === "loading" || feedback?.ok === true}
@@ -236,23 +252,38 @@ export function AIModal({ group, year, month, validation, onScheduleUpdated }: P
                         {warningState === "applying" ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
                         Godkänn åtgärd
                       </button>
-                    ) : (
-                      <div className="flex-1" />
-                    )}
-                    <button
-                      onClick={skipCurrent}
-                      disabled={warningState === "applying"}
-                      className="flex-1 flex items-center justify-center gap-2 border border-gray-200 hover:bg-gray-50 text-gray-600 py-2.5 rounded-xl text-sm font-medium transition-colors"
-                    >
-                      Hoppa över <ChevronRight size={14} />
-                    </button>
-                  </div>
+                      <button
+                        onClick={skipCurrent}
+                        disabled={warningState === "applying"}
+                        className="flex items-center justify-center gap-2 border border-gray-200 hover:bg-gray-50 text-gray-600 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
+                      >
+                        Hoppa över <ChevronRight size={14} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
-                <div className="text-center py-6">
-                  <Check size={32} className="mx-auto text-green-500 mb-2" />
-                  <p className="text-sm font-semibold text-gray-700">Alla varningar genomgångna</p>
-                  <p className="text-xs text-gray-400 mt-1">Stäng fönstret och kontrollera schemat.</p>
+                <div className="space-y-4">
+                  <div className="text-center py-2">
+                    <Check size={28} className="mx-auto text-green-500 mb-2" />
+                    <p className="text-sm font-semibold text-gray-700">Alla åtgärdbara varningar genomgångna</p>
+                  </div>
+                  {softWarnings.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Kvarstående varningar (hantera manuellt)</p>
+                      <div className="max-h-48 overflow-y-auto space-y-1">
+                        {softWarnings.map((w, i) => (
+                          <div key={i} className="flex items-start gap-2 bg-yellow-50 border border-yellow-100 rounded-lg px-3 py-2">
+                            <AlertTriangle size={12} className="text-yellow-500 shrink-0 mt-0.5" />
+                            <p className="text-xs text-yellow-800"><span className="font-mono mr-1">{formatDate(w.date)}</span>{w.message}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <button onClick={() => setOpen(false)} className="w-full border border-gray-200 hover:bg-gray-50 text-gray-600 py-2.5 rounded-xl text-sm font-medium transition-colors">
+                    Stäng
+                  </button>
                 </div>
               )}
             </div>
