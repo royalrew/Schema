@@ -206,6 +206,18 @@ const SPECIFICATIONS: SpecItem[] = [
     ]
   },
 
+  {
+    id: "hours-balance-threshold",
+    category: "hours",
+    title: "Timbalansgräns ±15 timmar per månad",
+    desc: "Efter generering kontrollerar systemet att varje medarbetares faktiska schematimmar ligger inom ±15 timmar från månadsmålet. Avvikelser utanför detta intervall flaggas som mjuka varningar.",
+    bullets: [
+      "Underskott > 15 h: systemet varnar och AI-lagret föreslår att lägga till OBOKAD-tid på lediga dagar.",
+      "Överskott > 15 h: systemet varnar så att planeraren kan justera manuellt.",
+      "Gränsen på 15 timmar — är det rimligt för er verksamhet, eller ska den vara högre/lägre?"
+    ]
+  },
+
   // ── HARD RULES ──
   {
     id: "hard-dygnsvila",

@@ -240,6 +240,43 @@ def validate_schedule(
                     severity="soft"
                 ))
 
+        # --- REGEL: TIMBALANS ±15 h (mjuk) ---
+        contract_rules = CONTRACT_RULES.get(emp.contract_type, {})
+        weekly_h: float = contract_rules.get("weekly_hours", 0.0)
+        if weekly_h > 0:
+            num_days = len({d.date for d in days})
+            target_h = weekly_h * (num_days / 7.0) * (emp.percentage or 1.0)
+            actual_h = sum(
+                (seg.end_time - seg.start_time).total_seconds() / 3600
+                for d in days if d.shift and not d.shift.is_unbooked
+                for seg in d.shift.segments
+            )
+            diff = actual_h - target_h
+            THRESHOLD = 15.0
+            if diff < -THRESHOLD:
+                errors.append(ValidationErrorDetail(
+                    rule_name="timbalans_underskott",
+                    employee_id=emp.id,
+                    date=days[-1].date if days else date.today(),
+                    message=(
+                        f"{emp.name} har {abs(diff):.1f} timmar för få i schemat "
+                        f"(mål {target_h:.1f} h, faktiskt {actual_h:.1f} h). "
+                        f"Överväg att lägga till OBOKAD-tid."
+                    ),
+                    severity="soft"
+                ))
+            elif diff > THRESHOLD:
+                errors.append(ValidationErrorDetail(
+                    rule_name="timbalans_overskott",
+                    employee_id=emp.id,
+                    date=days[-1].date if days else date.today(),
+                    message=(
+                        f"{emp.name} har {diff:.1f} timmar för många i schemat "
+                        f"(mål {target_h:.1f} h, faktiskt {actual_h:.1f} h)."
+                    ),
+                    severity="soft"
+                ))
+
     # --- REGLER: 06:45 och 21:30-täckning (soft) ---
     from collections import defaultdict as _dd
     emp_group = {emp.id: emp.group for emp in employees}
