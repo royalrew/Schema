@@ -101,7 +101,7 @@ def _generate_demo_employees(group_name: str, rand_suffix: str) -> list[Employee
         {
             "id": f"demo_emp_6_{rand_suffix}",
             "name": "Anders Sjöberg",
-            "contract_type": "helg_fre_son",
+            "contract_type": "helg_fre_man",
             "absences": [],
             "wishes": [],
             "vetos": anders_vetos,  # Veto under helgen
@@ -112,7 +112,7 @@ def _generate_demo_employees(group_name: str, rand_suffix: str) -> list[Employee
         {
             "id": f"demo_emp_7_{rand_suffix}",
             "name": "Sofia Holm",
-            "contract_type": "helg_lor_man",
+            "contract_type": "helg_fre_man",
             "absences": [],
             "wishes": [],
             "vetos": [],

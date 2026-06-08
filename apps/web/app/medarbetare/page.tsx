@@ -11,8 +11,7 @@ const CONTRACT_LABEL: Record<string, string> = {
   varierande:   "Varierande",
   dagtid:       "Dagtid",
   kval:         "Kväll",
-  helg_fre_son: "Helg fre–sön",
-  helg_lor_man: "Helg lör–mån",
+  helg_fre_man: "Helg fre–mån",
   natt:         "Natt",
   vikarie:      "Vikarie",
 };

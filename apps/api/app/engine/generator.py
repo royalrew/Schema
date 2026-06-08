@@ -138,6 +138,18 @@ def generate_schedule(
     # Spåra: hur många helger varje medarbetare fått
     weekend_count: dict[str, int] = defaultdict(int)
 
+    # Spåra: arbetade dagar per helgblock för helgmedarbetare
+    work_days_by_weekend: dict[str, dict[date, int]] = defaultdict(lambda: defaultdict(int))
+
+    def _get_weekend_id(d: date) -> date:
+        wd = d.weekday()
+        if wd == 0:  # Måndag hör till helgen som började i fredags
+            return d - timedelta(days=3)
+        elif wd >= 4:  # Fredag, Lördag, Söndag
+            return d - timedelta(days=wd - 4)
+        else:
+            return d - timedelta(days=wd + 3) # fallback
+
     # Spåra: schemalagda timmar per medarbetare (för prioritering)
     scheduled_hours: dict[str, float] = defaultdict(float)
 
@@ -196,17 +208,22 @@ def generate_schedule(
         if weekday not in allowed:
             return False
         # Max 2 helger/månad — GÄLLER EJ helgkontrakt (de jobbar alltid helg)
-        helg_contracts = {ContractType.HELG_FRE_SON, ContractType.HELG_LOR_MAN}
+        helg_contracts = {ContractType.HELG_FRE_MAN}
         if _is_weekend(d) and emp.contract_type not in helg_contracts and weekend_count[emp.id] >= 2:
             return False
+        # Helgmedarbetare (HELG_FRE_MAN) jobbar max 3 dagar per helgblock
+        if emp.contract_type == ContractType.HELG_FRE_MAN:
+            weekend_id = _get_weekend_id(d)
+            if work_days_by_weekend[emp.id][weekend_id] >= 3:
+                return False
         # Kväll-kontrakt jobbar bara kväll, inte dag
         if emp.contract_type == ContractType.KVAL and shift_type in (ShiftType.DAG_TIDIG, ShiftType.DAG):
             return False
         # Dagansvarig får aldrig kväll eller natt
         if emp.is_dagansvarig and shift_type in (ShiftType.KVAL_KORT, ShiftType.KVAL_LANG, ShiftType.NATT):
             return False
-        # Helg-kontrakt jobbar bara helg
-        if emp.contract_type in (ContractType.HELG_FRE_SON, ContractType.HELG_LOR_MAN):
+        # Helg-kontrakt jobbar bara helg (tillåtna dagar)
+        if emp.contract_type == ContractType.HELG_FRE_MAN:
             if shift_type not in (ShiftType.KVAL_KORT, ShiftType.KVAL_LANG, ShiftType.DAG, ShiftType.DAG_TIDIG, ShiftType.NATT):
                 return False
         # Natt-kontrakt jobbar bara natt
@@ -291,6 +308,11 @@ def generate_schedule(
         scheduled_hours[emp.id] += shift.total_hours
         if _is_weekend(d):
             weekend_count[emp.id] += 1
+        
+        # Räkna arbetsdagar per weekendblock
+        weekend_id = _get_weekend_id(d)
+        work_days_by_weekend[emp.id][weekend_id] += 1
+
         last_shift_end[emp.id] = shift.segments[-1].end_time
         work_days_per_emp[emp.id].add(d)
 
@@ -340,7 +362,7 @@ def generate_schedule(
         if weekday not in allowed:
             return "ej tillåten veckodag"
             
-        helg_contracts = {ContractType.HELG_FRE_SON, ContractType.HELG_LOR_MAN}
+        helg_contracts = {ContractType.HELG_FRE_MAN}
         if _is_weekend(d) and emp.contract_type not in helg_contracts and weekend_count[emp.id] >= 2:
             return "max 2 helger uppnått"
             
@@ -350,7 +372,7 @@ def generate_schedule(
         if emp.is_dagansvarig and stype in (ShiftType.KVAL_KORT, ShiftType.KVAL_LANG, ShiftType.NATT):
             return "dagansvarig"
             
-        if emp.contract_type in (ContractType.HELG_FRE_SON, ContractType.HELG_LOR_MAN) and not _is_weekend(d):
+        if emp.contract_type == ContractType.HELG_FRE_MAN and d.weekday() not in CONTRACT_RULES[ContractType.HELG_FRE_MAN]["allowed_weekdays"]:
             return "helgkontrakt"
             
         if emp.contract_type == ContractType.NATT and stype != ShiftType.NATT:
@@ -429,7 +451,7 @@ def generate_schedule(
                 fm_needed -= 1  # DAG_TIDIG räknas som fm
 
             # --- 2. Fyll återstående fm-slots med DAG ---
-            # Helgkontrakt (HELG_FRE_SON, HELG_LOR_MAN) får jobba DAG på sina tillåtna dagar
+            # Helgkontrakt (HELG_FRE_MAN) får jobba DAG på sina tillåtna dagar
             fm_candidates = sorted(
                 [e for e in group_emps if available(e, current, ShiftType.DAG)
                  and e.contract_type not in (ContractType.KVAL, ContractType.NATT)],
@@ -520,10 +542,10 @@ def generate_schedule(
                 current += timedelta(days=1)
 
     # -----------------------------------------------------------------------
-    # HELGKONTRAKT-FYLLNAD: HELG_FRE_SON och HELG_LOR_MAN jobbar VARJE helg
-    # Deras hela kontrakt är helgarbete — fyll alla tillåtna dagar
+    # HELGKONTRAKT-FYLLNAD: HELG_FRE_MAN jobbar VARJE helg
+    # Deras hela kontrakt är helgarbete — fyll alla tillåtna dagar (fre-mån, max 3/helg)
     # -----------------------------------------------------------------------
-    _HELGKONTRAKT = {ContractType.HELG_FRE_SON, ContractType.HELG_LOR_MAN}
+    _HELGKONTRAKT = {ContractType.HELG_FRE_MAN}
     for group_emps in employees_by_group.values():
         for emp in group_emps:
             if emp.contract_type not in _HELGKONTRAKT:

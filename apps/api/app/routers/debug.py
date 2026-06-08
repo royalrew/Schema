@@ -99,7 +99,7 @@ async def debug_snapshot(
 
     WEEKLY_HOURS = {
         "dagtid": 40.0, "varierande": 37.0, "kval": 30.0,
-        "helg_fre_son": 26.0, "helg_lor_man": 26.0, "natt": 34.33,
+        "helg_fre_man": 26.0, "natt": 34.33,
     }
 
     emp_summary = []

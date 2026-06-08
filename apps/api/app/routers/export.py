@@ -30,8 +30,7 @@ WEEKLY_HOURS = {
     ContractType.DAGTID:       40.0,
     ContractType.VARIERANDE:   37.0,
     ContractType.KVAL:         30.0,
-    ContractType.HELG_FRE_SON: 26.0,
-    ContractType.HELG_LOR_MAN: 26.0,
+    ContractType.HELG_FRE_MAN: 26.0,
     ContractType.NATT:         34.33,
 }
 

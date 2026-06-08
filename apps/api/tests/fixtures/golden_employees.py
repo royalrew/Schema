@@ -56,7 +56,7 @@ _NORRA = [
     _e(4,  "Jack",     ContractType.KVAL,        Group.NORRA),
     _e(5,  "Joachim",  ContractType.VARIERANDE, Group.NORRA),
     _e(6,  "Sawsan",   ContractType.VARIERANDE, Group.NORRA),
-    _e(7,  "Hassan",   ContractType.HELG_LOR_MAN, Group.NORRA),
+    _e(7,  "Hassan",   ContractType.HELG_FRE_MAN, Group.NORRA),
     _e(8,  "Vikarie",  ContractType.VIKARIE, Group.NORRA),
 ]
 
@@ -73,7 +73,7 @@ _SODRA = [
     _e(15, "Sofia Persson",      ContractType.VARIERANDE,   Group.SODRA),
     _e(16, "Maja Gustafsson",    ContractType.DAGTID,       Group.SODRA),
     _e(17, "Helena Lindberg",    ContractType.KVAL,         Group.SODRA),
-    _e(18, "Kristina Bengtsson", ContractType.HELG_FRE_SON, Group.SODRA),
+    _e(18, "Kristina Bengtsson", ContractType.HELG_FRE_MAN, Group.SODRA),
 ]
 
 # ---------------------------------------------------------------------------
@@ -89,7 +89,7 @@ _OSTRA = [
     _e(25, "Susanna Nyström",    ContractType.VARIERANDE,   Group.OSTRA),
     _e(26, "Jenny Lundgren",     ContractType.DAGTID,       Group.OSTRA),
     _e(27, "Malin Söderberg",    ContractType.KVAL,         Group.OSTRA),
-    _e(28, "Therese Björk",      ContractType.HELG_FRE_SON, Group.OSTRA),
+    _e(28, "Therese Björk",      ContractType.HELG_FRE_MAN, Group.OSTRA),
 ]
 
 # ---------------------------------------------------------------------------
@@ -103,7 +103,7 @@ _CENTRUM_1 = [
     _e(33, "Britt-Marie Sandberg", ContractType.VARIERANDE,   Group.CENTRUM_1),
     _e(34, "Inger Håkansson",      ContractType.DAGTID,       Group.CENTRUM_1),
     _e(35, "Sigrid Björklund",     ContractType.KVAL,         Group.CENTRUM_1),
-    _e(36, "Margareta Engström",   ContractType.HELG_FRE_SON, Group.CENTRUM_1),
+    _e(36, "Margareta Engström",   ContractType.HELG_FRE_MAN, Group.CENTRUM_1),
 ]
 
 # ---------------------------------------------------------------------------
@@ -117,7 +117,7 @@ _CENTRUM_2 = [
     _e(41, "Frida Eliasson",     ContractType.VARIERANDE,   Group.CENTRUM_2),
     _e(42, "Anders Eriksson",    ContractType.DAGTID,       Group.CENTRUM_2),
     _e(43, "Matilda Grantham",   ContractType.KVAL,         Group.CENTRUM_2),
-    _e(44, "Josefin Persson",    ContractType.HELG_FRE_SON, Group.CENTRUM_2),
+    _e(44, "Josefin Persson",    ContractType.HELG_FRE_MAN, Group.CENTRUM_2),
 ]
 
 # ---------------------------------------------------------------------------
@@ -131,7 +131,7 @@ _CENTRUM_3 = [
     _e(49, "Louise Almqvist",  ContractType.VARIERANDE,   Group.CENTRUM_3),
     _e(50, "Petra Martinsson", ContractType.DAGTID,       Group.CENTRUM_3),
     _e(51, "Henrik Lindqvist", ContractType.KVAL,         Group.CENTRUM_3),
-    _e(52, "Peter Axelsson",   ContractType.HELG_FRE_SON, Group.CENTRUM_3),
+    _e(52, "Peter Axelsson",   ContractType.HELG_FRE_MAN, Group.CENTRUM_3),
 ]
 
 # ---------------------------------------------------------------------------
@@ -145,7 +145,7 @@ _MOHOLM = [
     _e(57, "Oscar Lindahl",      ContractType.VARIERANDE,   Group.MOHOLM),
     _e(58, "Filip Nyström",      ContractType.DAGTID,       Group.MOHOLM),
     _e(59, "Simon Ericsson",     ContractType.KVAL,         Group.MOHOLM),
-    _e(60, "Jonas Pettersson",   ContractType.HELG_FRE_SON, Group.MOHOLM),
+    _e(60, "Jonas Pettersson",   ContractType.HELG_FRE_MAN, Group.MOHOLM),
 ]
 
 # ---------------------------------------------------------------------------

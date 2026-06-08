@@ -14,8 +14,7 @@ class ContractType(str, Enum):
     DAGTID       = "dagtid"        # 40h/vecka måndag-fredag
     VARIERANDE   = "varierande"    # 37h/vecka dag, kväll, helg
     KVAL         = "kval"          # 30h/vecka kväll
-    HELG_FRE_SON = "helg_fre_son"  # 26h/vecka fre-sön (Sara: "Fred-sön")
-    HELG_LOR_MAN = "helg_lor_man"  # 26h/vecka lör-mån (Sara: "Lör-Mån")
+    HELG_FRE_MAN = "helg_fre_man"  # 26h/vecka fre-mån (Sara: "Fred-Mån")
     NATT         = "natt"          # 34.33h/vecka enbart natt
     VIKARIE      = "vikarie"       # Timvikarie, 0h/vecka, jobbar vid behov
 
@@ -25,8 +24,7 @@ CONTRACT_RULES: dict[str, dict] = {
     ContractType.DAGTID:       {"weekly_hours": 40.0,   "allowed_weekdays": list(range(0, 5))},
     ContractType.VARIERANDE:   {"weekly_hours": 37.0,   "allowed_weekdays": list(range(0, 7))},
     ContractType.KVAL:         {"weekly_hours": 30.0,   "allowed_weekdays": list(range(0, 7))},
-    ContractType.HELG_FRE_SON: {"weekly_hours": 26.0,   "allowed_weekdays": [4, 5, 6]},   # fre=4, lör=5, sön=6
-    ContractType.HELG_LOR_MAN: {"weekly_hours": 26.0,   "allowed_weekdays": [5, 6, 0]},   # lör=5, sön=6, mån=0
+    ContractType.HELG_FRE_MAN: {"weekly_hours": 26.0,   "allowed_weekdays": [4, 5, 6, 0]},   # fre=4, lör=5, sön=6, mån=0
     ContractType.NATT:         {"weekly_hours": 34.33,  "allowed_weekdays": list(range(0, 7))},
     ContractType.VIKARIE:      {"weekly_hours": 0.0,    "allowed_weekdays": list(range(0, 7))},
 }

@@ -65,7 +65,7 @@ class TestIngetOnskeschema:
             _emp(4, "David",   ContractType.KVAL),
             _emp(5, "Eva",     ContractType.KVAL),
             _emp(6, "Filip",   ContractType.DAGTID),
-            _emp(7, "Gunnar",  ContractType.HELG_LOR_MAN),
+            _emp(7, "Gunnar",  ContractType.HELG_FRE_MAN),
         ]
         krav = [_krav(d) for d in WEEK]
         schedule, stats = generate_schedule(employees, krav, MON, SUN)

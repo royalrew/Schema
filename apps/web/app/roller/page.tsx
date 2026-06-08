@@ -15,8 +15,7 @@ const CONTRACTS: { value: ContractType; label: string }[] = [
   { value: "varierande",   label: "Varierande" },
   { value: "dagtid",       label: "Dagtid" },
   { value: "kval",         label: "Kväll" },
-  { value: "helg_fre_son", label: "Helg fre–sön" },
-  { value: "helg_lor_man", label: "Helg lör–mån" },
+  { value: "helg_fre_man", label: "Helg fre–mån" },
   { value: "natt",         label: "Natt" },
   { value: "vikarie",      label: "Vikarie" },
 ];

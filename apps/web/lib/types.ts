@@ -2,8 +2,7 @@ export type ContractType =
   | "dagtid"
   | "varierande"
   | "kval"
-  | "helg_fre_son"
-  | "helg_lor_man"
+  | "helg_fre_man"
   | "natt"
   | "vikarie";
 

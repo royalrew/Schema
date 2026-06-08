@@ -10,8 +10,7 @@ const CONTRACT_TYPES = [
   { value: "varierande",   label: "Varierande (37h/v)" },
   { value: "dagtid",       label: "Dagtid (40h/v, mån–fre)" },
   { value: "kval",         label: "Kväll (30h/v)" },
-  { value: "helg_fre_son", label: "Helg fre–sön (26h/v)" },
-  { value: "helg_lor_man", label: "Helg lör–mån (26h/v)" },
+  { value: "helg_fre_man", label: "Helg fre–mån (26h/v)" },
   { value: "natt",         label: "Natt (34,33h/v)" },
   { value: "vikarie",      label: "Vikarie (Vid behov)" },
 ];

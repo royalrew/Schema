@@ -8,7 +8,7 @@ const DAY_SHORT = ["Mån", "Tis", "Ons", "Tor", "Fre", "Lör", "Sön"];
 
 const WEEKLY_HOURS: Record<string, number> = {
   dagtid: 40, varierande: 37, kval: 30,
-  helg_fre_son: 26, helg_lor_man: 26, natt: 34.33,
+  helg_fre_man: 26, natt: 34.33,
   vikarie: 0,
 };
 

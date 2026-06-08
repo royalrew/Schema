@@ -204,7 +204,7 @@ class TestGoldenDataset:
         assert len(get_employees_by_contract(ContractType.VARIERANDE)) >= 30
         assert len(get_employees_by_contract(ContractType.DAGTID)) >= 6
         assert len(get_employees_by_contract(ContractType.KVAL)) >= 6
-        assert len(get_employees_by_contract(ContractType.HELG_FRE_SON)) >= 6
+        assert len(get_employees_by_contract(ContractType.HELG_FRE_MAN)) >= 7
         assert len(get_employees_by_contract(ContractType.NATT)) >= 4
 
     def test_inga_mer_an_2_vetos(self):
@@ -228,57 +228,59 @@ class TestGoldenDataset:
 # =============================================================================
 
 class TestKontraktsregler:
-    def test_helg_fre_son_fredag_ok(self):
-        """HELG_FRE_SON kan jobba fredag."""
-        emp = get_employees_by_contract(ContractType.HELG_FRE_SON)[0]
+    def test_helg_fre_man_fredag_ok(self):
+        """HELG_FRE_MAN kan jobba fredag."""
+        emp = get_employees_by_contract(ContractType.HELG_FRE_MAN)[0]
         friday = date(2026, 6, 5)  # Fredag
         assert friday.weekday() == 4
         schedule = [ScheduleDay(date=friday, employee_id=emp.id, shift=make_day_shift(friday))]
         result = validate_schedule(schedule, [emp])
         hard = [e for e in result.errors if e.severity == "hard" and "avtalsbrott" in e.rule_name]
-        assert not hard, f"HELG_FRE_SON borde kunna jobba fredag: {hard}"
+        assert not hard, f"HELG_FRE_MAN borde kunna jobba fredag: {hard}"
 
-    def test_helg_fre_son_mandag_fel(self):
-        """HELG_FRE_SON får INTE jobba måndag."""
-        emp = get_employees_by_contract(ContractType.HELG_FRE_SON)[0]
-        monday = date(2026, 6, 1)  # Måndag
-        assert monday.weekday() == 0
-        schedule = [ScheduleDay(date=monday, employee_id=emp.id, shift=make_day_shift(monday))]
-        result = validate_schedule(schedule, [emp])
-        assert any("avtalsbrott_dagar" in e.rule_name for e in result.errors)
-
-    def test_helg_fre_son_tisdag_fel(self):
-        """HELG_FRE_SON får INTE jobba tisdag."""
-        emp = get_employees_by_contract(ContractType.HELG_FRE_SON)[0]
-        tuesday = date(2026, 6, 2)  # Tisdag
-        schedule = [ScheduleDay(date=tuesday, employee_id=emp.id, shift=make_day_shift(tuesday))]
-        result = validate_schedule(schedule, [emp])
-        assert any("avtalsbrott_dagar" in e.rule_name for e in result.errors)
-
-    def test_helg_lor_man_lordag_ok(self):
-        """HELG_LOR_MAN kan jobba lördag."""
-        emp = get_employees_by_contract(ContractType.HELG_LOR_MAN)[0]
+    def test_helg_fre_man_lordag_ok(self):
+        """HELG_FRE_MAN kan jobba lördag."""
+        emp = get_employees_by_contract(ContractType.HELG_FRE_MAN)[0]
         saturday = date(2026, 6, 6)  # Lördag
         assert saturday.weekday() == 5
         schedule = [ScheduleDay(date=saturday, employee_id=emp.id, shift=make_day_shift(saturday))]
         result = validate_schedule(schedule, [emp])
         hard = [e for e in result.errors if e.severity == "hard" and "avtalsbrott" in e.rule_name]
-        assert not hard
+        assert not hard, f"HELG_FRE_MAN borde kunna jobba lördag: {hard}"
 
-    def test_helg_lor_man_mandag_ok(self):
-        """HELG_LOR_MAN kan jobba måndag."""
-        emp = get_employees_by_contract(ContractType.HELG_LOR_MAN)[0]
+    def test_helg_fre_man_sondag_ok(self):
+        """HELG_FRE_MAN kan jobba söndag."""
+        emp = get_employees_by_contract(ContractType.HELG_FRE_MAN)[0]
+        sunday = date(2026, 6, 7)  # Söndag
+        assert sunday.weekday() == 6
+        schedule = [ScheduleDay(date=sunday, employee_id=emp.id, shift=make_day_shift(sunday))]
+        result = validate_schedule(schedule, [emp])
+        hard = [e for e in result.errors if e.severity == "hard" and "avtalsbrott" in e.rule_name]
+        assert not hard, f"HELG_FRE_MAN borde kunna jobba söndag: {hard}"
+
+    def test_helg_fre_man_mandag_ok(self):
+        """HELG_FRE_MAN kan jobba måndag."""
+        emp = get_employees_by_contract(ContractType.HELG_FRE_MAN)[0]
         monday = date(2026, 6, 1)  # Måndag
+        assert monday.weekday() == 0
         schedule = [ScheduleDay(date=monday, employee_id=emp.id, shift=make_day_shift(monday))]
         result = validate_schedule(schedule, [emp])
         hard = [e for e in result.errors if e.severity == "hard" and "avtalsbrott" in e.rule_name]
-        assert not hard
+        assert not hard, f"HELG_FRE_MAN borde kunna jobba måndag: {hard}"
 
-    def test_helg_lor_man_tisdag_fel(self):
-        """HELG_LOR_MAN får INTE jobba tisdag."""
-        emp = get_employees_by_contract(ContractType.HELG_LOR_MAN)[0]
+    def test_helg_fre_man_tisdag_fel(self):
+        """HELG_FRE_MAN får INTE jobba tisdag."""
+        emp = get_employees_by_contract(ContractType.HELG_FRE_MAN)[0]
         tuesday = date(2026, 6, 2)  # Tisdag
         schedule = [ScheduleDay(date=tuesday, employee_id=emp.id, shift=make_day_shift(tuesday))]
+        result = validate_schedule(schedule, [emp])
+        assert any("avtalsbrott_dagar" in e.rule_name for e in result.errors)
+
+    def test_helg_fre_man_onsdag_fel(self):
+        """HELG_FRE_MAN får INTE jobba onsdag."""
+        emp = get_employees_by_contract(ContractType.HELG_FRE_MAN)[0]
+        wednesday = date(2026, 6, 3)  # Onsdag
+        schedule = [ScheduleDay(date=wednesday, employee_id=emp.id, shift=make_day_shift(wednesday))]
         result = validate_schedule(schedule, [emp])
         assert any("avtalsbrott_dagar" in e.rule_name for e in result.errors)
 
@@ -395,11 +397,11 @@ class TestObokadFiller:
         for sd in obokade:
             assert sd.date not in absence_dates, f"OBOKAD lagd på frånvarodag {sd.date}"
 
-    def test_helg_fre_son_fyller_bara_tillated_dagar(self):
-        """HELG_FRE_SON fylls bara med OBOKAD på fre/lör/sön."""
-        emp = get_employees_by_contract(ContractType.HELG_FRE_SON)[0]
+    def test_helg_fre_man_fyller_bara_tillated_dagar(self):
+        """HELG_FRE_MAN fylls bara med OBOKAD på fre/lör/sön/mån."""
+        emp = get_employees_by_contract(ContractType.HELG_FRE_MAN)[0]
         obokade = fill_with_obokad(emp, [], date(2026, 6, 1), date(2026, 6, 30))
-        allowed = {4, 5, 6}  # fre, lör, sön
+        allowed = {0, 4, 5, 6}  # mån=0, fre=4, lör=5, sön=6
         for sd in obokade:
             assert sd.date.weekday() in allowed, (
                 f"OBOKAD lagd på förbjuden dag {sd.date.strftime('%A')}: {sd.date}"
