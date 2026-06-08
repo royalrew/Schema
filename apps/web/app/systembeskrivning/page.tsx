@@ -207,6 +207,20 @@ const SPECIFICATIONS: SpecItem[] = [
   },
 
   {
+    id: "hours-obokad-counts",
+    category: "hours",
+    title: "OBOKAD tid räknas som arbetade kontraktstimmar",
+    desc: "OBOKAD tid räknas som schemalagd närvaro mot personens kontraktstimmar — personen är på jobbet och tillgänglig. Tiden kan tas i anspråk av den egna gruppen eller lånas ut till en annan grupp som behöver hjälp. När systemet fyllt på med obokad anses timbalansen alltså vara uppfylld.",
+    bullets: [
+      "Både obokad och kontorstid räknas in i månadens timmar — det är arbetstid, inte en lucka i schemat.",
+      "Om en person ligger under sitt timmål kan AI-assistenten i korrigeringsläget föreslå att fylla på med obokad tid på lediga dagar och deldagar (delar av en dag), med hänsyn till 11h dygnsvila och kontraktets tillåtna veckodagar.",
+      "Tanken är att detta ska samspela med kontorstid — vissa personer ska kunna få kontorstid ibland istället för ren obokad.",
+      "Detta motsvarar hur samordnarna idag fyller de små hålen manuellt efter att alla grupper lagts; i värsta fall används vikarier.",
+      "Fråga till Sara: Stämmer det att obokad tid ska räknas som fullgjorda kontraktstimmar? Och är obokad/kontorstid rätt sätt att täcka ett underskott, eller vill ni hellre lösa det på annat sätt?"
+    ]
+  },
+
+  {
     id: "hours-balance-threshold",
     category: "hours",
     title: "Varning vid stor timavvikelse i schemat",
