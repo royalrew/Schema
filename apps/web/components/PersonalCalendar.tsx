@@ -2,10 +2,12 @@
 import { useState, useCallback, useEffect } from "react";
 import { format, getDaysInMonth, getDay } from "date-fns";
 import { sv } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, ArrowLeft, Star, CalendarDays, Clock, UserCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, ArrowLeft, Star, CalendarDays, Clock, UserCircle, LogOut } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { updateWishSchedule, fetchShiftConfigs, fetchSchedule, fetchPeriodInfo, fetchEmployee, updateWishes, type WishShiftEntry } from "@/lib/api";
-import { getUser } from "@/lib/auth";
+import { getUser, clearToken } from "@/lib/auth";
+import { ChangePasswordModal } from "./ChangePasswordModal";
 import { DagValjare, type ShiftPreset } from "./DagValjare";
 import { Personkort } from "./Personkort";
 import { FranvaroManager } from "./FranvaroManager";
@@ -57,6 +59,7 @@ export function PersonalCalendar({
   year: initYear,
   month: initMonth,
 }: Props) {
+  const router = useRouter();
   const [emp, setEmp] = useState(init);
   const [schedule, setSchedule] = useState<ScheduleDay[]>(initialSchedule);
   const [phase, setPhase] = useState<Phase>(initialPhase);
@@ -65,6 +68,12 @@ export function PersonalCalendar({
   const [saving, setSaving] = useState(false);
   const [openDay, setOpenDay] = useState<string | null>(null);
   const [presets, setPresets] = useState<ShiftPreset[]>([]);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+
+  function handleLogout() {
+    clearToken();
+    router.push("/login");
+  }
 
   // Hämta förinställda passtider för gruppen
   useEffect(() => {
@@ -180,13 +189,24 @@ export function PersonalCalendar({
       <WelcomeGuide userId={getUser()?.user_id ?? 0} />
 
       {/* ── Header ── */}
-      <div className="bg-white border-b border-gray-200 px-4 py-4 flex items-center gap-3">
-        <Link href="/" className="p-2 rounded-xl hover:bg-gray-100 text-gray-500 shrink-0">
-          <ArrowLeft size={18} />
-        </Link>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-bold text-gray-900 leading-tight truncate">{emp.name}</h1>
-          <p className="text-sm text-gray-400">{emp.group} · {emp.contract_type}</p>
+      <div className="bg-white border-b border-gray-200 px-4 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3 min-w-0">
+          <Link href="/" className="p-2 rounded-xl hover:bg-gray-100 text-gray-500 shrink-0">
+            <ArrowLeft size={18} />
+          </Link>
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold text-gray-900 leading-tight truncate">{emp.name}</h1>
+            <p className="text-sm text-gray-400">{emp.group} · {emp.contract_type}</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={() => setShowPasswordModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-terracotta hover:bg-cream rounded-lg transition-colors cursor-pointer">
+            <UserCircle size={14} /> Byt lösenord
+          </button>
+          <button onClick={handleLogout} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer">
+            <LogOut size={14} /> Logga ut
+          </button>
         </div>
       </div>
 
@@ -389,6 +409,7 @@ export function PersonalCalendar({
           </div>{/* slut höger */}
         </div>{/* slut flex */}
       </div>
+      {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
     </div>
   );
 }

@@ -101,8 +101,9 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <p className="text-center text-xs text-ink-soft/60 mt-6">
-            Har du inget konto? Kontakta din schemaansvarig.
+          <p className="text-center text-xs text-ink-soft/60 mt-6 leading-relaxed">
+            Har du inget konto eller har du glömt lösenordet? <br />
+            Kontakta din schemaansvarig så genererar de en inbjudan eller nollställer ditt lösenord.
           </p>
         </div>
       </div>

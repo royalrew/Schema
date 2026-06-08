@@ -156,9 +156,32 @@ async def seed_default_employees_if_empty():
             print(f"[INIT] Fel vid sådd av standardmedarbetare: {e}")
 
 
+async def migrate_old_contract_types():
+    """Migrerar gamla helgkontraktstyper ('helg_fre_son' och 'helg_lor_man') till den nya enhetliga 'helg_fre_man'."""
+    from app.database import AsyncSessionLocal
+    from app.db_models import EmployeeRow
+    from sqlalchemy import update
+    
+    async with AsyncSessionLocal() as db:
+        try:
+            stmt = (
+                update(EmployeeRow)
+                .where(EmployeeRow.contract_type.in_(["helg_fre_son", "helg_lor_man"]))
+                .values(contract_type="helg_fre_man")
+            )
+            result = await db.execute(stmt)
+            await db.commit()
+            if result.rowcount > 0:
+                print(f"[MIGRATION] Migrerade {result.rowcount} medarbetare från gamla helgkontrakt till 'helg_fre_man'.")
+        except Exception as e:
+            await db.rollback()
+            print(f"[MIGRATION] Fel vid migrering av gamla kontraktstyper: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await create_tables()
+    await migrate_old_contract_types()
     await create_default_admin()
     await seed_default_employees_if_empty()
     await cleanup_old_demo_data()

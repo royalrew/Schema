@@ -7,6 +7,7 @@ import { sv } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, LogOut, Users, Settings, ClipboardList, AlertTriangle, CheckCircle2, Clock, Plus, Shield, BookOpen } from "lucide-react";
 import { getUser, clearToken, isLoggedIn } from "@/lib/auth";
 import { WelcomeGuide } from "@/components/WelcomeGuide";
+import { ChangePasswordModal } from "@/components/ChangePasswordModal";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:9000";
 const ORG_NAME = process.env.NEXT_PUBLIC_ORG_NAME ?? "Schemamotor";
@@ -31,6 +32,7 @@ export default function Dashboard() {
   const [user, setUser] = useState<any>(null);
   const [mounted, setMounted] = useState(false);
   const now = new Date();
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [groups, setGroups] = useState<string[]>([]);
@@ -138,6 +140,9 @@ export default function Dashboard() {
             </Link>
             <div className="w-px h-4 bg-gray-200 mx-1" />
             <span className="text-sm text-gray-600 font-medium">{mounted ? user?.full_name : ""}</span>
+            <button onClick={() => setShowPasswordModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-terracotta hover:bg-cream rounded-lg transition-colors cursor-pointer">
+              <Shield size={14} /> Byt lösenord
+            </button>
             <button onClick={logout} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
               <LogOut size={14} /> Logga ut
             </button>
@@ -244,6 +249,7 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+      {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
     </div>
   );
 }

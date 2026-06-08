@@ -309,9 +309,29 @@ export default function RollerPage() {
                               </button>
                             )}
                             {user && user.invite_accepted && (
-                              <span className="text-[10px] text-sage font-semibold flex items-center gap-0.5">
-                                <Check size={10} /> Aktivt
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-sage font-semibold flex items-center gap-0.5">
+                                  <Check size={10} /> Aktivt
+                                </span>
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      const invite = await getInviteToken(user.id);
+                                      const url = `${window.location.origin}/invite/${invite.invite_token}`;
+                                      await navigator.clipboard.writeText(url).catch(() => null);
+                                      setCopiedInvite(true);
+                                      setInviteUrl(url);
+                                      setInviteName(emp.name);
+                                    } catch (err: unknown) {
+                                      setErrorMessage(err instanceof Error ? err.message : "Kunde inte hämta länk.");
+                                    }
+                                  }}
+                                  className="text-gray-400 hover:text-terracotta text-[10px] font-medium underline cursor-pointer shrink-0 transition-colors"
+                                  title="Generera återställningslänk för lösenord"
+                                >
+                                  Nollställ
+                                </button>
+                              </div>
                             )}
                           </div>
                         </td>

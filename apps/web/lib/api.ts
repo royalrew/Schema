@@ -105,6 +105,17 @@ export async function updateUserRole(userId: number, role: string): Promise<User
   return res.json();
 }
 
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const res = await apiFetch(`${BASE}/api/auth/password`, {
+    method: "PUT",
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail ?? "Kunde inte byta lösenord");
+  }
+}
+
 export async function updateEmployeeAttributes(
   employeeId: string,
   attributes: {
