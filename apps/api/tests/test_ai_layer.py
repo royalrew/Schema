@@ -23,7 +23,7 @@ from app.engine.schemas import (
     ScheduleDay, Shift, ShiftSegment, ShiftType, ValidationErrorDetail,
 )
 from app.engine.solver import validate_schedule
-from app.routers.autocorrect import _simulate_dag_tidig
+from app.routers.autocorrect import _simulate_dag_tidig, _simulate_timbalans, _emp_actual_hours
 
 STOCKHOLM = ZoneInfo("Europe/Stockholm")
 
@@ -286,3 +286,115 @@ class TestTimbalansRegler:
         result = validate_schedule(shift_90h, [emp])
         rule_names = [e.rule_name for e in result.errors]
         assert "timbalans_underskott" in rule_names
+
+    def test_obokad_raknas_mot_timbalans(self):
+        """
+        OBOKAD-tid (is_unbooked=True) ska räknas som schemalagda timmar mot
+        kontraktet. Schema med 120 h DAG + 40 h OBOKAD = 160 h ≈ mål → ingen varning.
+        (Före semantikändringen exkluderades obokad → falsk underskottsvarning.)
+        """
+        emp = _emp(1, ContractType.VARIERANDE, percentage=1.0)
+        days: list[ScheduleDay] = []
+        dag_remaining = 120.0
+        obokad_remaining = 40.0
+        for day_n in range(1, 31):
+            d = date(2026, 6, day_n)
+            if dag_remaining > 0:
+                h = min(8.0, dag_remaining)
+                days.append(_schedule_day(emp, d, _shift(d, 7, 7 + int(h), ShiftType.DAG)))
+                dag_remaining -= h
+            elif obokad_remaining > 0:
+                h = min(8.0, obokad_remaining)
+                ob = Shift(
+                    shift_type=ShiftType.OBOKAD,
+                    segments=[ShiftSegment(start_time=_dt(d, 7), end_time=_dt(d, 7) + timedelta(hours=h))],
+                    is_unbooked=True,
+                )
+                days.append(_schedule_day(emp, d, ob))
+                obokad_remaining -= h
+            else:
+                days.append(_schedule_day(emp, d, None))
+
+        result = validate_schedule(days, [emp])
+        rule_names = [e.rule_name for e in result.errors]
+        assert "timbalans_underskott" not in rule_names, "Obokad ska räknas → inget underskott"
+
+
+# =============================================================================
+# 9. _simulate_timbalans — fyller underskott med OBOKAD-tid
+# =============================================================================
+
+class TestSimulateTimbalans:
+
+    def _full_month_dicts(self, emp: Employee, worked_days: int, hours_per_day: float = 8.0) -> list[dict]:
+        """Bygger ett månadsschema (dict-format) där de första N dagarna har DAG-pass."""
+        schedule: list[dict] = []
+        for day_n in range(1, 31):
+            d = date(2026, 6, day_n)
+            if day_n <= worked_days:
+                schedule.append(_sd(emp.id, d, _shift(d, 7, 7 + int(hours_per_day), ShiftType.DAG)))
+            else:
+                schedule.append(_sd(emp.id, d, None))
+        return schedule
+
+    def test_fyller_underskott_med_obokad(self):
+        """Person med stort underskott ska få OBOKAD-tid tillagd tills målet nås."""
+        emp = _emp(1, ContractType.VARIERANDE, percentage=1.0)
+        # 10 dagar * 8 h = 80 h, mål ≈ 158.6 h → underskott ~78 h
+        schedule = self._full_month_dicts(emp, worked_days=10)
+
+        new_sched, added = _simulate_timbalans(schedule, emp.id, [emp], 2026, 6)
+
+        assert added > 0, "Ska lägga till timmar"
+        total = _emp_actual_hours(new_sched, emp.id)
+        # Efter fix ska personen ligga inom 15 h från målet (≈158.6 h)
+        assert total >= 158.6 - 15, f"Total {total:.1f} h ska nå nära målet"
+        # Det ska finnas obokad-pass i det nya schemat
+        obokad = [sd for sd in new_sched if sd.get("shift") and sd["shift"]["shift_type"] == "obokad"]
+        assert len(obokad) > 0
+
+    def test_loser_timbalansvarning(self):
+        """Efter _simulate_timbalans ska timbalans_underskott vara borta."""
+        emp = _emp(1, ContractType.VARIERANDE, percentage=1.0)
+        schedule = self._full_month_dicts(emp, worked_days=10)
+
+        # Före: underskott finns
+        before_days = [ScheduleDay.model_validate(sd) for sd in schedule]
+        before_rules = [e.rule_name for e in validate_schedule(before_days, [emp]).errors]
+        assert "timbalans_underskott" in before_rules
+
+        new_sched, _ = _simulate_timbalans(schedule, emp.id, [emp], 2026, 6)
+        after_days = [ScheduleDay.model_validate(sd) for sd in new_sched]
+        after_rules = [e.rule_name for e in validate_schedule(after_days, [emp]).errors]
+        assert "timbalans_underskott" not in after_rules, "Varningen ska vara åtgärdad"
+
+    def test_hoppar_over_upptagna_dagar(self):
+        """Dagar med befintligt pass ska inte skrivas över."""
+        emp = _emp(1, ContractType.VARIERANDE, percentage=1.0)
+        schedule = self._full_month_dicts(emp, worked_days=10)
+
+        new_sched, _ = _simulate_timbalans(schedule, emp.id, [emp], 2026, 6)
+
+        # De första 10 dagarna ska fortfarande vara DAG, inte obokad
+        for day_n in range(1, 11):
+            d = date(2026, 6, day_n).isoformat()
+            sd = next(s for s in new_sched if s["employee_id"] == emp.id and s["date"] == d)
+            assert sd["shift"]["shift_type"] == "dag", f"Dag {day_n} ska vara orörd"
+
+    def test_inget_underskott_returnerar_noll(self):
+        """Person redan på målet ska inte få något tillagt."""
+        emp = _emp(1, ContractType.VARIERANDE, percentage=1.0)
+        # 20 dagar * 8 h = 160 h ≈ mål → inget underskott
+        schedule = self._full_month_dicts(emp, worked_days=20)
+
+        new_sched, added = _simulate_timbalans(schedule, emp.id, [emp], 2026, 6)
+        assert added == 0.0
+
+    def test_muterar_inte_original(self):
+        """_simulate_timbalans ska inte ändra det ursprungliga schemat."""
+        emp = _emp(1, ContractType.VARIERANDE, percentage=1.0)
+        schedule = self._full_month_dicts(emp, worked_days=10)
+        snapshot = [dict(sd) for sd in schedule]
+
+        _simulate_timbalans(schedule, emp.id, [emp], 2026, 6)
+        assert schedule == snapshot, "Originalschemat ska vara oförändrat"

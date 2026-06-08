@@ -17,6 +17,7 @@ from app.auth_utils import require_admin_or_schemaansvarig
 from app.engine.schemas import (
     Employee, ContractType, Group, Absence, AbsenceType,
     SoftConstraint, WishShiftEntry, Shift, ShiftSegment, ShiftType,
+    CONTRACT_RULES,
 )
 from app.engine.solver import validate_schedule
 from app.routers.schedule import _row_to_employee, _dict_to_schedule_day, _schedule_day_to_dict
@@ -109,6 +110,134 @@ def _simulate_dag_tidig(
         schedule.append({"date": datestr, "employee_id": chosen.id, "shift": shift_data, "absence": None})
 
     return schedule, chosen.id
+
+
+def _emp_actual_hours(schedule: list[dict], emp_id: str) -> float:
+    """Summerar alla schemalagda timmar för en person (inkl. obokad/kontorstid)."""
+    total = 0.0
+    for sd in schedule:
+        if sd["employee_id"] != emp_id:
+            continue
+        shift = sd.get("shift")
+        if not shift:
+            continue
+        for seg in shift.get("segments", []):
+            start = datetime.fromisoformat(seg["start_time"])
+            end = datetime.fromisoformat(seg["end_time"])
+            total += (end - start).total_seconds() / 3600
+    return total
+
+
+def _violates_dygnsvila(
+    schedule: list[dict], sched_pos: dict[tuple, int],
+    emp_id: str, target_date: date, start_dt: datetime, end_dt: datetime,
+) -> bool:
+    """Kontrollerar 11h dygnsvila mot dagen före och dagen efter."""
+    for offset, is_prev in ((-1, True), (1, False)):
+        neighbor_date = (target_date + timedelta(days=offset)).isoformat()
+        i = sched_pos.get((emp_id, neighbor_date))
+        if i is None:
+            continue
+        shift = schedule[i].get("shift")
+        if not shift:
+            continue
+        for seg in shift.get("segments", []):
+            s = datetime.fromisoformat(seg["start_time"])
+            e = datetime.fromisoformat(seg["end_time"])
+            if is_prev:
+                if (start_dt - e).total_seconds() / 3600 < 11:
+                    return True
+            else:
+                if (s - end_dt).total_seconds() / 3600 < 11:
+                    return True
+    return False
+
+
+def _simulate_timbalans(
+    schedule: list[dict],
+    employee_id: str,
+    employees: list[Employee],
+    year: int,
+    month: int,
+    activity: str = "obokad",
+) -> tuple[list[dict], float]:
+    """
+    Fyller en persons timunderskott med OBOKAD-tid (eller kontorstid) på lediga
+    dagar och deldagar tills timmålet nås. Respekterar 11h dygnsvila mot grann-
+    dagar, kontraktets tillåtna veckodagar och hoppar över dagar med befintligt
+    pass eller frånvaro. Sparar INTE till DB.
+    Returnerar (modifierat schema, antal tillagda timmar).
+    """
+    schedule = copy.deepcopy(schedule)
+    emp = next((e for e in employees if e.id == employee_id), None)
+    if emp is None:
+        return schedule, 0.0
+
+    # Nattpersonal och timvikarier fylls inte med dag-obokad (samma som generatorn).
+    if emp.contract_type in (ContractType.NATT, ContractType.VIKARIE):
+        return schedule, 0.0
+
+    rules = CONTRACT_RULES.get(emp.contract_type, {})
+    weekly_h: float = rules.get("weekly_hours", 0.0)
+    if weekly_h <= 0:
+        return schedule, 0.0
+
+    from calendar import monthrange
+    _, last = monthrange(year, month)
+    target_h = weekly_h * (last / 7.0) * (emp.percentage or 1.0)
+    deficit = target_h - _emp_actual_hours(schedule, employee_id)
+    if deficit <= 1.0:
+        return schedule, 0.0
+
+    sched_pos: dict[tuple, int] = {
+        (sd["employee_id"], sd["date"]): i for i, sd in enumerate(schedule)
+    }
+    allowed_weekdays = rules.get("allowed_weekdays", list(range(7)))
+
+    if activity == "kontorstid":
+        shift_type, is_unbooked = "kontorstid", False
+        note = "AI-fix — kontorstid för att nå timbalans"
+    else:
+        shift_type, is_unbooked = "obokad", True
+        note = "AI-fix — OBOKAD-tid för att nå timbalans"
+
+    added = 0.0
+    for dnum in range(1, last + 1):
+        if deficit <= 1.0:
+            break
+        d = date(year, month, dnum)
+        if d.weekday() not in allowed_weekdays:
+            continue
+        datestr = d.isoformat()
+        key = (employee_id, datestr)
+        existing_i = sched_pos.get(key)
+        if existing_i is not None:
+            sd = schedule[existing_i]
+            if sd.get("shift") or sd.get("absence"):
+                continue
+
+        block_h = min(deficit, 8.0)
+        start_dt = datetime(d.year, d.month, d.day, 7, 0, tzinfo=STOCKHOLM)
+        end_dt = start_dt + timedelta(hours=block_h)
+        if _violates_dygnsvila(schedule, sched_pos, employee_id, d, start_dt, end_dt):
+            continue
+
+        shift_data = {
+            "shift_type": shift_type,
+            "segments": [{"start_time": start_dt.isoformat(), "end_time": end_dt.isoformat()}],
+            "is_unbooked": is_unbooked,
+            "note": note,
+        }
+        if existing_i is not None:
+            schedule[existing_i] = {**schedule[existing_i], "shift": shift_data}
+        else:
+            schedule.append({"date": datestr, "employee_id": employee_id, "shift": shift_data, "absence": None})
+            sched_pos[key] = len(schedule) - 1
+
+        deficit -= block_h
+        added += block_h
+
+    return schedule, added
 
 
 @router.post("/{group}/{year}/{month}/dag-tidig", response_model=FixResult)

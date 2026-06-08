@@ -23,7 +23,7 @@ from app.engine.schemas import (
 )
 from app.engine.solver import validate_schedule
 from app.routers.schedule import _row_to_employee, _dict_to_schedule_day
-from app.routers.autocorrect import _simulate_dag_tidig
+from app.routers.autocorrect import _simulate_dag_tidig, _simulate_timbalans
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 STOCKHOLM = ZoneInfo("Europe/Stockholm")
@@ -32,6 +32,7 @@ STOCKHOLM = ZoneInfo("Europe/Stockholm")
 _FIX_TYPE_MAP = {
     "dag_tidig_saknas": "dag_tidig",
     "kval_lang_saknas": "kval_lang",
+    "timbalans_underskott": "timbalans",
 }
 
 
@@ -57,8 +58,9 @@ class SideEffect(BaseModel):
 
 class ExplainResponse(BaseModel):
     explanation: str
-    fix_type: str            # "dag_tidig" | "kval_lang" | "manual"
+    fix_type: str            # "dag_tidig" | "timbalans" | "manual"
     fix_possible: bool
+    fix_summary: str | None   # Kort beskrivning av föreslagen åtgärd
     affected_employee_id: str | None
     affected_employee_name: str | None
     affected_date: str
@@ -114,27 +116,47 @@ async def explain_warning(
     chosen_emp_id: str | None = None
     side_effects: list[SideEffect] = []
     fix_possible = False
+    fix_summary: str | None = None
+    simulated: list[dict] | None = None
 
     if fix_type == "dag_tidig":
         target_date = date.fromisoformat(req.warning.date)
         simulated, chosen_emp_id = _simulate_dag_tidig(schedule, target_date, employees)
-
         if chosen_emp_id:
             fix_possible = True
-            # Jämför varningar före/efter
-            before_days = [_dict_to_schedule_day(sd) for sd in schedule]
-            after_days = [_dict_to_schedule_day(sd) for sd in simulated]
-            before_warnings = {
-                (e.date.isoformat(), e.rule_name, e.employee_id)
-                for e in validate_schedule(before_days, employees).errors
-                if e.severity == "soft"
-            }
-            after_validation = validate_schedule(after_days, employees)
-            for err in after_validation.errors:
-                if err.severity == "soft":
-                    key = (err.date.isoformat(), err.rule_name, err.employee_id)
-                    if key not in before_warnings:
-                        side_effects.append(SideEffect(date=err.date.isoformat(), message=err.message))
+            name = emp_map[chosen_emp_id].name if chosen_emp_id in emp_map else chosen_emp_id
+            fix_summary = f"Tilldela {name} ett 06:45-pass den {req.warning.date}."
+
+    elif fix_type == "timbalans":
+        chosen_emp_id = req.warning.employee_id or None
+        if chosen_emp_id and chosen_emp_id in emp_map:
+            simulated, added_hours = _simulate_timbalans(
+                schedule, chosen_emp_id, employees, req.year, req.month,
+            )
+            if added_hours > 0:
+                fix_possible = True
+                name = emp_map[chosen_emp_id].name
+                fix_summary = (
+                    f"Lägg till {added_hours:.0f} h OBOKAD-tid på lediga dagar för {name} "
+                    f"så att kontraktstimmarna fylls."
+                )
+            else:
+                chosen_emp_id = None
+
+    # Jämför varningar före/efter för att hitta bieffekter
+    if fix_possible and simulated is not None:
+        before_days = [_dict_to_schedule_day(sd) for sd in schedule]
+        after_days = [_dict_to_schedule_day(sd) for sd in simulated]
+        before_warnings = {
+            (e.date.isoformat(), e.rule_name, e.employee_id)
+            for e in validate_schedule(before_days, employees).errors
+        }
+        after_validation = validate_schedule(after_days, employees)
+        for err in after_validation.errors:
+            key = (err.date.isoformat(), err.rule_name, err.employee_id)
+            if key not in before_warnings:
+                prefix = "⚠ HÅRT FEL: " if err.severity == "hard" else ""
+                side_effects.append(SideEffect(date=err.date.isoformat(), message=f"{prefix}{err.message}"))
 
     affected_emp = emp_map.get(chosen_emp_id) if chosen_emp_id else None
 
@@ -144,8 +166,8 @@ async def explain_warning(
         f"Datum: {req.warning.date}",
         f"Regelnamn: {req.warning.rule_name}",
     ]
-    if fix_possible and affected_emp:
-        context_lines.append(f"Föreslagen åtgärd: tilldela {affected_emp.name} ett 06:45-pass denna dag.")
+    if fix_possible and fix_summary:
+        context_lines.append(f"Föreslagen åtgärd: {fix_summary}")
     else:
         context_lines.append("Ingen automatisk åtgärd är möjlig för denna varning.")
     if side_effects:
@@ -177,6 +199,7 @@ Svara ENBART med en JSON med nyckeln "explanation" och värdet som en textsträn
         explanation=explanation,
         fix_type=fix_type,
         fix_possible=fix_possible,
+        fix_summary=fix_summary,
         affected_employee_id=chosen_emp_id,
         affected_employee_name=affected_emp.name if affected_emp else None,
         affected_date=req.warning.date,
@@ -229,5 +252,25 @@ async def apply_fix(
         period_row.schedule = new_schedule
         await db.commit()
         return ApplyFixResponse(ok=True, message=f"{emp_name} har tilldelats 06:45-passet den {req.affected_date}.")
+
+    if req.fix_type == "timbalans":
+        new_schedule, added = _simulate_timbalans(
+            schedule, req.affected_employee_id, employees, req.year, req.month,
+        )
+        if added <= 0:
+            return ApplyFixResponse(ok=False, message="Kunde inte fylla timunderskottet — inga lediga dagar utan att bryta dygnsvila.")
+
+        emp_name = emp_map.get(req.affected_employee_id, type("x", (), {"name": req.affected_employee_id})()).name
+        timestamp_str = datetime.now(STOCKHOLM).strftime("%Y-%m-%d %H:%M")
+        log_entry = (
+            f"[{timestamp_str}] AI-åtgärd godkänd av {current_user.full_name or current_user.username}: "
+            f"Lade till {added:.0f} h OBOKAD-tid för {emp_name} för att nå kontraktstimmarna."
+        )
+        current_decisions = list(period_row.decisions or [])
+        current_decisions.append(log_entry)
+        period_row.decisions = current_decisions
+        period_row.schedule = new_schedule
+        await db.commit()
+        return ApplyFixResponse(ok=True, message=f"{added:.0f} h OBOKAD-tid tillagd för {emp_name}.")
 
     return ApplyFixResponse(ok=False, message=f"Fix-typ '{req.fix_type}' stöds inte ännu.")

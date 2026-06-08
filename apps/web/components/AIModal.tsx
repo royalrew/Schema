@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Sparkles, Check, X, ChevronRight, Loader2, AlertTriangle, Info } from "lucide-react";
 import type { ValidationError, ValidationResult } from "@/lib/types";
 import { getToken } from "@/lib/auth";
@@ -27,6 +27,7 @@ interface ExplainResult {
   explanation: string;
   fix_type: string;
   fix_possible: boolean;
+  fix_summary: string | null;
   affected_employee_id: string | null;
   affected_employee_name: string | null;
   affected_date: string;
@@ -209,27 +210,33 @@ export function AIModal({ group, year, month, validation, onScheduleUpdated }: P
                       </div>
 
                       {/* Föreslagen åtgärd */}
-                      {explainResult.fix_possible && explainResult.affected_employee_name && (
+                      {explainResult.fix_possible && explainResult.fix_summary && (
                         <div className="border border-gray-200 rounded-xl p-3 space-y-1">
                           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Föreslagen åtgärd</p>
-                          <p className="text-sm text-gray-700">
-                            Tilldela <span className="font-semibold">{explainResult.affected_employee_name}</span> passet den {formatDate(explainResult.affected_date)}.
-                          </p>
+                          <p className="text-sm text-gray-700">{explainResult.fix_summary}</p>
                         </div>
                       )}
 
                       {/* Bieffekter */}
-                      {explainResult.side_effects.length > 0 && (
-                        <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 space-y-1">
-                          <p className="text-xs font-semibold text-orange-700">Bieffekter av åtgärden</p>
-                          {explainResult.side_effects.map((se, i) => (
-                            <p key={i} className="text-xs text-orange-800">
-                              <span className="font-mono bg-orange-100 px-1 rounded mr-1">{formatDate(se.date)}</span>
-                              {se.message}
+                      {explainResult.side_effects.length > 0 && (() => {
+                        const hasHard = explainResult.side_effects.some(se => se.message.includes("HÅRT FEL"));
+                        return (
+                          <div className={`border rounded-xl px-4 py-3 space-y-1 ${hasHard ? "bg-red-50 border-red-200" : "bg-orange-50 border-orange-200"}`}>
+                            <p className={`text-xs font-semibold ${hasHard ? "text-red-700" : "text-orange-700"}`}>
+                              {hasHard ? "⚠ Åtgärden skapar nya regelbrott" : "Bieffekter av åtgärden"}
                             </p>
-                          ))}
-                        </div>
-                      )}
+                            {explainResult.side_effects.map((se, i) => {
+                              const hard = se.message.includes("HÅRT FEL");
+                              return (
+                                <p key={i} className={`text-xs ${hard ? "text-red-800" : "text-orange-800"}`}>
+                                  <span className={`font-mono px-1 rounded mr-1 ${hard ? "bg-red-100" : "bg-orange-100"}`}>{formatDate(se.date)}</span>
+                                  {se.message}
+                                </p>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
 

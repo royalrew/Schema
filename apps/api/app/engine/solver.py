@@ -246,9 +246,11 @@ def validate_schedule(
         if weekly_h > 0:
             num_days = len({d.date for d in days})
             target_h = weekly_h * (num_days / 7.0) * (emp.percentage or 1.0)
+            # OBOKAD- och kontorstid räknas som schemalagd närvaro mot kontraktstimmarna.
+            # (Obokad är personalens tid på kontraktet och kan tillgodose andra grupper.)
             actual_h = sum(
                 (seg.end_time - seg.start_time).total_seconds() / 3600
-                for d in days if d.shift and not d.shift.is_unbooked
+                for d in days if d.shift
                 for seg in d.shift.segments
             )
             diff = actual_h - target_h
