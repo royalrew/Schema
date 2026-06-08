@@ -345,6 +345,7 @@ export default function LandingPage() {
               <span className="font-display text-xl hover-underline-expand">Sintari</span>
             </Link>
             <div className="flex items-center gap-6 mr-2">
+              <Link href="/systembeskrivning" className="text-sm text-ink-soft hover:text-ink hover-underline-expand py-1 transition-colors">Systembeskrivning</Link>
               <a href="#hur" className="text-sm text-ink-soft hover:text-ink hover-underline-expand py-1 transition-colors">Hur det funkar</a>
               <a href="#varde" className="hidden sm:block text-sm text-ink-soft hover:text-ink hover-underline-expand py-1 transition-colors">Värde</a>
               <a href="#faq" className="hidden sm:block text-sm text-ink-soft hover:text-ink hover-underline-expand py-1 transition-colors">FAQ</a>
