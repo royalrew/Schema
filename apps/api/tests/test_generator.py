@@ -332,3 +332,55 @@ class TestBemanningsbristOchVikarie:
         assert erik_day.shift is not None
         assert erik_day.shift.shift_type == ShiftType.DAG_TIDIG
         assert erik_day.shift.total_hours == 7.25 # 06:45 till 14:00 = 7h 15m = 7.25h
+
+
+# =============================================================================
+# 8. HELGBLOCK-KRAV (MAX 2 HELGER)
+# =============================================================================
+
+class TestHelgblocksKrav:
+    def test_weekend_block_constraint_counts_as_one_weekend(self):
+        """Om en anställd jobbar både lördag och söndag på samma helg ska det endast räknas som 1 helg."""
+        employees = [
+            _emp(1, "Anna", ContractType.VARIERANDE),
+            _emp(2, "Björn", ContractType.VARIERANDE),
+        ]
+        # Vi kör under 3 helger (juni 2026: 6-7, 13-14, 20-21)
+        # Anna schemaläggs på lördag och söndag under helg 1 och helg 2.
+        # Detta bör tillåta henne att vara ledig på helg 3 (då hon uppnått 2 helger),
+        # men hon får inte blockeras på söndag helg 2 efter att ha jobbat lördag helg 2.
+        krav = []
+        # Helg 1 (6-7 juni)
+        krav.append(Bemanningskrav(group=Group.NORRA, date=date(2026, 6, 6), fm_heads=1, kval_heads=0, em_heads=0, natt_heads=0))
+        krav.append(Bemanningskrav(group=Group.NORRA, date=date(2026, 6, 7), fm_heads=1, kval_heads=0, em_heads=0, natt_heads=0))
+        # Helg 2 (13-14 juni)
+        krav.append(Bemanningskrav(group=Group.NORRA, date=date(2026, 6, 13), fm_heads=1, kval_heads=0, em_heads=0, natt_heads=0))
+        krav.append(Bemanningskrav(group=Group.NORRA, date=date(2026, 6, 14), fm_heads=1, kval_heads=0, em_heads=0, natt_heads=0))
+        # Helg 3 (20-21 juni)
+        krav.append(Bemanningskrav(group=Group.NORRA, date=date(2026, 6, 20), fm_heads=1, kval_heads=0, em_heads=0, natt_heads=0))
+        krav.append(Bemanningskrav(group=Group.NORRA, date=date(2026, 6, 21), fm_heads=1, kval_heads=0, em_heads=0, natt_heads=0))
+
+        # För att Anna ska väljas framför Björn sätter vi Björn som inte tillåten under dessa helger (eller önskemål för Anna på helg 1 och 2)
+        # Låt oss ge Anna önskemål på helg 1 (6, 7) och helg 2 (13, 14).
+        employees[0].wishes = [date(2026, 6, 6), date(2026, 6, 7), date(2026, 6, 13), date(2026, 6, 14)]
+
+        schedule, stats = generate_schedule(employees, krav, date(2026, 6, 1), date(2026, 6, 21))
+
+        # Verifiera att Anna faktiskt jobbade både lördag och söndag på helg 1 och helg 2
+        anna_sched = sorted([sd for sd in schedule if sd.employee_id == "T01" and sd.shift is not None], key=lambda x: x.date)
+        anna_worked_dates = [sd.date for sd in anna_sched if sd.date.weekday() >= 5]
+        
+        # Hon bör ha jobbat 6, 7, 13, 14 juni
+        assert date(2026, 6, 6) in anna_worked_dates
+        assert date(2026, 6, 7) in anna_worked_dates
+        assert date(2026, 6, 13) in anna_worked_dates
+        assert date(2026, 6, 14) in anna_worked_dates
+
+        # Hon bör INTE ha jobbat på helg 3 (20-21 juni) eftersom hon uppnått gränsen på 2 helger
+        assert date(2026, 6, 20) not in anna_worked_dates
+        assert date(2026, 6, 21) not in anna_worked_dates
+        
+        # Kontrollera att det inte fanns bemanningsbrist för helg 1 och helg 2
+        decisions = stats["decisions"]
+        assert not any("brist" in d.lower() and ("06-06" in d or "06-07" in d or "06-13" in d or "06-14" in d) for d in decisions)
+

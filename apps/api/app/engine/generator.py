@@ -135,8 +135,8 @@ def generate_schedule(
         (k.group, k.date): k for k in krav
     }
 
-    # Spåra: hur många helger varje medarbetare fått
-    weekend_count: dict[str, int] = defaultdict(int)
+    # Spåra: vilka helger varje medarbetare fått (helgblock-id:s)
+    weekend_blocks: dict[str, set[date]] = defaultdict(set)
 
     # Spåra: arbetade dagar per helgblock för helgmedarbetare
     work_days_by_weekend: dict[str, dict[date, int]] = defaultdict(lambda: defaultdict(int))
@@ -237,7 +237,7 @@ def generate_schedule(
             return False
         # Max 2 helger/månad — GÄLLER EJ helgkontrakt (de jobbar alltid helg)
         helg_contracts = {ContractType.HELG_FRE_MAN}
-        if _is_weekend(d) and emp.contract_type not in helg_contracts and weekend_count[emp.id] >= 2:
+        if _is_weekend(d) and emp.contract_type not in helg_contracts and len(weekend_blocks[emp.id]) >= 2 and _get_weekend_id(d) not in weekend_blocks[emp.id]:
             return False
         # Helgmedarbetare (HELG_FRE_MAN) jobbar max 3 dagar per helgblock
         if emp.contract_type == ContractType.HELG_FRE_MAN:
@@ -311,16 +311,27 @@ def generate_schedule(
             return 1  # denna dag är oönskad
         return 0
 
-    def priority_key(emp: Employee, d: date, category: str = "any") -> tuple[int, int, int, int, int, float]:
+    def priority_key(emp: Employee, d: date, category: str = "any") -> tuple[int, int, int, int, int, int, int, float]:
         target = CONTRACT_RULES.get(emp.contract_type, {}).get("weekly_hours", 37.0)
         weeks = (period_end - period_start).days / 7.0
         target_total = target * weeks * emp.percentage
         ratio = scheduled_hours[emp.id] / max(target_total, 1.0)
         has_wish = 0 if d in wish_dates[emp.id] else 1
+        
+        # Helgkontrakt (HELG_FRE_MAN) ska alltid prioriteras först på helger
+        is_helg_contract = 0 if (_is_weekend(d) and emp.contract_type == ContractType.HELG_FRE_MAN) else 1
+        
+        # Prioritera medarbetare som redan arbetar ett pass detta helgblock
+        already_working_this_weekend = 1
+        if _is_weekend(d) and emp.contract_type in _HELG_CONTRACTS:
+            weekend_id = _get_weekend_id(d)
+            if work_days_by_weekend[emp.id][weekend_id] > 0:
+                already_working_this_weekend = 0
+
         needs_helg = 0 if (
             _is_weekend(d)
             and emp.contract_type in _HELG_CONTRACTS
-            and weekend_count[emp.id] < 2
+            and len(weekend_blocks[emp.id]) < 2
         ) else 1
         # Önskeschema: personen har lagt in en specifik shift_type → stark boost
         wished_stype = wish_schedule_idx.get(emp.id, {}).get(d, "NOT_SET")
@@ -335,7 +346,7 @@ def generate_schedule(
 
         # Mjuka krav
         soft_pen = _soft_penalty(emp, d)
-        return (has_wish_stype, has_wish, needs_helg, reached_target, soft_pen, ratio)
+        return (has_wish_stype, has_wish, is_helg_contract, already_working_this_weekend, needs_helg, reached_target, soft_pen, ratio)
 
     def assign(emp: Employee, d: date, shift_type: ShiftType, reason: str = "") -> None:
         shift = _make_shift(shift_type, d, templates, employee=emp)
@@ -346,7 +357,7 @@ def generate_schedule(
         )
         scheduled_hours[emp.id] += shift.total_hours
         if _is_weekend(d):
-            weekend_count[emp.id] += 1
+            weekend_blocks[emp.id].add(_get_weekend_id(d))
         
         # Räkna arbetsdagar per weekendblock
         weekend_id = _get_weekend_id(d)
@@ -410,7 +421,7 @@ def generate_schedule(
             return "ej tillåten veckodag"
             
         helg_contracts = {ContractType.HELG_FRE_MAN}
-        if _is_weekend(d) and emp.contract_type not in helg_contracts and weekend_count[emp.id] >= 2:
+        if _is_weekend(d) and emp.contract_type not in helg_contracts and len(weekend_blocks[emp.id]) >= 2 and _get_weekend_id(d) not in weekend_blocks[emp.id]:
             return "max 2 helger uppnått"
             
         if emp.contract_type == ContractType.KVAL and stype in (ShiftType.DAG_TIDIG, ShiftType.DAG):
@@ -666,10 +677,10 @@ def generate_schedule(
         for emp in group_emps:
             if emp.contract_type not in _HELG_CONTRACTS:
                 continue
-            if weekend_count[emp.id] >= 2:
+            if len(weekend_blocks[emp.id]) >= 2:
                 continue
             current = period_start
-            while current <= period_end and weekend_count[emp.id] < 2:
+            while current <= period_end and len(weekend_blocks[emp.id]) < 2:
                 if _is_weekend(current):
                     stype = ShiftType.KVAL_KORT if emp.contract_type == ContractType.KVAL else ShiftType.DAG
                     if available(emp, current, stype):
