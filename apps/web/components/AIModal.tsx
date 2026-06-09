@@ -1,38 +1,8 @@
 "use client";
 import { useState } from "react";
-import { Sparkles, Check, X, ChevronRight, Loader2, AlertTriangle, Info } from "lucide-react";
-import type { ValidationError, ValidationResult } from "@/lib/types";
-import { getToken } from "@/lib/auth";
-
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:9000";
-
-function authFetch(url: string, init?: RequestInit) {
-  const token = getToken();
-  return fetch(url, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
-}
-
-interface SideEffect {
-  date: string;
-  message: string;
-}
-
-interface ExplainResult {
-  explanation: string;
-  fix_type: string;
-  fix_possible: boolean;
-  fix_summary: string | null;
-  affected_employee_id: string | null;
-  affected_employee_name: string | null;
-  affected_date: string;
-  side_effects: SideEffect[];
-}
+import { Sparkles, Check, X, Loader2, AlertTriangle, Info, Sunrise, Sunset, Users, Clock, ShieldCheck } from "lucide-react";
+import type { ValidationResult, FixPlan, FixStep } from "@/lib/types";
+import { fetchFixPlan, applyFixPlan } from "@/lib/api";
 
 interface Props {
   group: string;
@@ -42,118 +12,79 @@ interface Props {
   onScheduleUpdated: () => void;
 }
 
-type WarningState = "loading" | "ready" | "applying" | "done";
-
-function formatDate(iso: string) {
+function formatDate(iso: string | null) {
+  if (!iso) return "";
   const d = new Date(iso);
   const days = ["Mån", "Tis", "Ons", "Tor", "Fre", "Lör", "Sön"];
   return `${days[(d.getDay() + 6) % 7]} ${d.getDate()}/${d.getMonth() + 1}`;
 }
 
+const OP_META: Record<string, { label: string; icon: typeof Sunrise; color: string }> = {
+  dag_tidig: { label: "06:45-täckning", icon: Sunrise, color: "text-blue-600" },
+  kval_lang: { label: "21:30-täckning", icon: Sunset, color: "text-purple-600" },
+  bemanning: { label: "Bemanning", icon: Users, color: "text-emerald-600" },
+  timbalans: { label: "Kontraktstimmar", icon: Clock, color: "text-amber-600" },
+};
+
 export function AIModal({ group, year, month, validation, onScheduleUpdated }: Props) {
   const [open, setOpen] = useState(false);
-  const [skipped, setSkipped] = useState<Set<number>>(new Set());
-  const [warningState, setWarningState] = useState<WarningState>("loading");
-  const [explainResult, setExplainResult] = useState<ExplainResult | null>(null);
-  const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null);
-  const [autoSkipping, setAutoSkipping] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [plan, setPlan] = useState<FixPlan | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [applying, setApplying] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const softWarnings = (validation?.errors ?? []).filter(e => e.severity === "soft");
-  const remaining = softWarnings.filter((_, i) => !skipped.has(i));
-  const current = remaining[0] ?? null;
-  const currentOriginalIdx = current ? softWarnings.indexOf(current) : -1;
+  const softWarnings = (validation?.errors ?? []).filter((e) => e.severity === "soft");
 
-  async function loadExplanation(warning: ValidationError, skippedSet: Set<number>) {
-    setWarningState("loading");
-    setExplainResult(null);
-    setFeedback(null);
-    setAutoSkipping(false);
-    try {
-      const res = await authFetch(`${BASE}/api/ai/explain-warning`, {
-        method: "POST",
-        body: JSON.stringify({ group, year, month, warning }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail ?? "Fel vid AI-analys");
-      setExplainResult(data);
-      setWarningState("ready");
-      // Auto-hoppa om ingen fix möjlig
-      if (!data.fix_possible) {
-        setAutoSkipping(true);
-        setTimeout(() => {
-          const origIdx = softWarnings.indexOf(warning);
-          const next = new Set(skippedSet);
-          next.add(origIdx);
-          setSkipped(next);
-          setAutoSkipping(false);
-          const nextWarning = softWarnings.find((_, i) => !next.has(i));
-          if (nextWarning) loadExplanation(nextWarning, next);
-        }, 800);
-      }
-    } catch {
-      setWarningState("ready");
-      setExplainResult(null);
-    }
-  }
-
-  function openModal() {
-    const empty = new Set<number>();
+  async function openModal() {
     setOpen(true);
-    setSkipped(empty);
-    setFeedback(null);
-    const first = softWarnings[0];
-    if (first) loadExplanation(first, empty);
-  }
-
-  function skipCurrent() {
-    if (currentOriginalIdx < 0) return;
-    const next = new Set(skipped);
-    next.add(currentOriginalIdx);
-    setSkipped(next);
-    setFeedback(null);
-    const nextWarning = softWarnings.find((_, i) => !next.has(i));
-    if (nextWarning) loadExplanation(nextWarning, next);
-    else setSkipped(next);
-  }
-
-  async function approveFix() {
-    if (!explainResult?.fix_possible || !explainResult.affected_employee_id) return;
-    setWarningState("applying");
-    setFeedback(null);
+    setPlan(null);
+    setResult(null);
+    setError(null);
+    setLoading(true);
     try {
-      const res = await authFetch(`${BASE}/api/ai/apply-fix`, {
-        method: "POST",
-        body: JSON.stringify({
-          group,
-          year,
-          month,
-          fix_type: explainResult.fix_type,
-          affected_employee_id: explainResult.affected_employee_id,
-          affected_date: explainResult.affected_date,
-        }),
-      });
-      const data = await res.json();
-      setFeedback({ ok: data.ok, message: data.message });
-      if (data.ok) {
-        onScheduleUpdated();
-        setTimeout(() => {
-          const next = new Set(skipped);
-          next.add(currentOriginalIdx);
-          setSkipped(next);
-          setFeedback(null);
-          const nextWarning = softWarnings.find((_, i) => !next.has(i));
-          if (nextWarning) loadExplanation(nextWarning, next);
-        }, 1200);
-      } else {
-        setWarningState("ready");
-      }
-    } catch {
-      setFeedback({ ok: false, message: "Något gick fel vid tillämpning av fix." });
-      setWarningState("ready");
+      const p = await fetchFixPlan(group, year, month);
+      setPlan(p);
+      setSelected(new Set(p.steps.map((s) => s.step_id)));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Kunde inte bygga åtgärdsplan");
+    } finally {
+      setLoading(false);
     }
   }
 
-  if (softWarnings.length === 0) return null;
+  function toggleStep(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function approve(steps: FixStep[]) {
+    if (steps.length === 0) return;
+    setApplying(true);
+    setError(null);
+    try {
+      const res = await applyFixPlan(group, year, month, steps);
+      setResult({
+        ok: res.ok,
+        message: `${res.applied_count} åtgärder tillämpade. ${res.warnings_after} varningar kvar, ${res.hard_errors_after} hårda fel.`,
+      });
+      onScheduleUpdated();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Kunde inte tillämpa planen");
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  if (softWarnings.length === 0 && !open) return null;
+
+  const resolved = plan ? Math.max(0, plan.warnings_before - plan.warnings_after_if_all) : 0;
+  const selectedSteps = plan ? plan.steps.filter((s) => selected.has(s.step_id)) : [];
 
   return (
     <>
@@ -161,20 +92,20 @@ export function AIModal({ group, year, month, validation, onScheduleUpdated }: P
         onClick={openModal}
         className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-purple-600 hover:text-purple-700 hover:bg-purple-50 border border-purple-200 rounded-lg transition-colors"
       >
-        <Sparkles size={14} /> Åtgärda varningar ({softWarnings.length})
+        <Sparkles size={14} /> Åtgärda alla varningar ({softWarnings.length})
       </button>
 
       {open && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col max-h-[88vh]">
 
             {/* Header */}
-            <div className="bg-linear-to-r from-purple-600 to-blue-600 px-6 py-4 flex items-center justify-between">
+            <div className="bg-linear-to-r from-purple-600 to-blue-600 px-6 py-4 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2 text-white">
                 <Sparkles size={18} />
                 <div>
-                  <p className="font-semibold text-sm">AI-varningshantering</p>
-                  <p className="text-xs text-purple-200">{group} · {month}/{year} · {remaining.length} kvar av {softWarnings.length}</p>
+                  <p className="font-semibold text-sm">AI-åtgärdsplan</p>
+                  <p className="text-xs text-purple-200">{group} · {month}/{year}</p>
                 </div>
               </div>
               <button onClick={() => setOpen(false)} className="text-white/70 hover:text-white">
@@ -182,118 +113,145 @@ export function AIModal({ group, year, month, validation, onScheduleUpdated }: P
               </button>
             </div>
 
-            <div className="p-6">
-              {current ? (
-                <div className="space-y-4">
-                  {/* Varningens ursprungstext */}
-                  <div className="flex items-start gap-2 bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-3">
-                    <AlertTriangle size={15} className="text-yellow-600 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-xs font-mono text-yellow-700">{formatDate(current.date)}</p>
-                      <p className="text-sm text-yellow-800 mt-0.5">{current.message}</p>
-                    </div>
-                  </div>
-
-                  {/* AI-förklaring */}
-                  {(warningState === "loading" || autoSkipping) && (
-                    <div className="flex items-center gap-2 text-sm text-gray-400 py-2">
-                      <Loader2 size={14} className="animate-spin" />
-                      {autoSkipping ? "Ingen fix möjlig, hoppar vidare…" : "Analyserar med AI…"}
-                    </div>
-                  )}
-
-                  {warningState !== "loading" && !autoSkipping && explainResult && (
-                    <div className="space-y-3">
-                      {/* Förklaring */}
-                      <div className="bg-purple-50 rounded-xl px-4 py-3 text-sm text-purple-800">
-                        {explainResult.explanation}
-                      </div>
-
-                      {/* Föreslagen åtgärd */}
-                      {explainResult.fix_possible && explainResult.fix_summary && (
-                        <div className="border border-gray-200 rounded-xl p-3 space-y-1">
-                          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Föreslagen åtgärd</p>
-                          <p className="text-sm text-gray-700">{explainResult.fix_summary}</p>
-                        </div>
-                      )}
-
-                      {/* Bieffekter */}
-                      {explainResult.side_effects.length > 0 && (() => {
-                        const hasHard = explainResult.side_effects.some(se => se.message.includes("HÅRT FEL"));
-                        return (
-                          <div className={`border rounded-xl px-4 py-3 space-y-1 ${hasHard ? "bg-red-50 border-red-200" : "bg-orange-50 border-orange-200"}`}>
-                            <p className={`text-xs font-semibold ${hasHard ? "text-red-700" : "text-orange-700"}`}>
-                              {hasHard ? "⚠ Åtgärden skapar nya regelbrott" : "Bieffekter av åtgärden"}
-                            </p>
-                            {explainResult.side_effects.map((se, i) => {
-                              const hard = se.message.includes("HÅRT FEL");
-                              return (
-                                <p key={i} className={`text-xs ${hard ? "text-red-800" : "text-orange-800"}`}>
-                                  <span className={`font-mono px-1 rounded mr-1 ${hard ? "bg-red-100" : "bg-orange-100"}`}>{formatDate(se.date)}</span>
-                                  {se.message}
-                                </p>
-                              );
-                            })}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  )}
-
-                  {/* Feedback */}
-                  {feedback && (
-                    <div className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${feedback.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
-                      {feedback.ok ? <Check size={14} /> : <X size={14} />}
-                      {feedback.message}
-                    </div>
-                  )}
-
-                  {/* Knappar — bara synliga när en fix är möjlig */}
-                  {!autoSkipping && explainResult?.fix_possible && (
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        onClick={approveFix}
-                        disabled={warningState === "applying" || warningState === "loading" || feedback?.ok === true}
-                        className="flex-1 flex items-center justify-center gap-2 bg-terracotta hover:bg-clay disabled:opacity-50 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors"
-                      >
-                        {warningState === "applying" ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                        Godkänn åtgärd
-                      </button>
-                      <button
-                        onClick={skipCurrent}
-                        disabled={warningState === "applying"}
-                        className="flex items-center justify-center gap-2 border border-gray-200 hover:bg-gray-50 text-gray-600 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors"
-                      >
-                        Hoppa över <ChevronRight size={14} />
-                      </button>
-                    </div>
-                  )}
+            <div className="p-6 overflow-y-auto space-y-4">
+              {/* Laddar */}
+              {loading && (
+                <div className="flex items-center gap-2 text-sm text-gray-400 py-8 justify-center">
+                  <Loader2 size={16} className="animate-spin" /> Planerar åtgärder med look-ahead…
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="text-center py-2">
-                    <Check size={28} className="mx-auto text-green-500 mb-2" />
-                    <p className="text-sm font-semibold text-gray-700">Alla åtgärdbara varningar genomgångna</p>
+              )}
+
+              {error && (
+                <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 px-3 py-2 rounded-lg">
+                  <X size={14} /> {error}
+                </div>
+              )}
+
+              {/* Resultat efter tillämpning */}
+              {result && (
+                <div className={`flex items-start gap-2 text-sm px-4 py-3 rounded-xl ${result.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-700"}`}>
+                  {result.ok ? <Check size={16} className="shrink-0 mt-0.5" /> : <X size={16} className="shrink-0 mt-0.5" />}
+                  <span>{result.message}</span>
+                </div>
+              )}
+
+              {plan && !result && (
+                <>
+                  {/* Sammanfattning */}
+                  <div className="bg-gray-50 border border-gray-150 rounded-2xl p-4 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck size={18} className="text-green-600 shrink-0" />
+                      <p className="text-sm font-semibold text-gray-800">
+                        Löser {resolved} av {plan.warnings_before} varningar i {plan.steps.length} steg
+                      </p>
+                    </div>
+                    <p className="text-xs text-gray-500 pl-7">
+                      {plan.new_hard_errors === 0
+                        ? "Inga nya regelbrott uppstår."
+                        : `⚠ OBS: ${plan.new_hard_errors} nya hårda fel.`}
+                      {plan.unresolved.length > 0 && ` ${plan.unresolved.length} varningar kvarstår och kräver vikarie.`}
+                    </p>
                   </div>
-                  {softWarnings.length > 0 && (
+
+                  {/* Holistisk förklaring */}
+                  <div className="bg-purple-50 rounded-xl px-4 py-3 text-sm text-purple-800">
+                    {plan.explanation}
+                  </div>
+
+                  {/* Steglista */}
+                  {plan.steps.length > 0 && (
                     <div className="space-y-1.5">
-                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Kvarstående varningar (hantera manuellt)</p>
-                      <div className="max-h-48 overflow-y-auto space-y-1">
-                        {softWarnings.map((w, i) => (
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">
+                          Åtgärder ({selected.size}/{plan.steps.length} valda)
+                        </p>
+                        <div className="flex gap-2 text-[11px] font-semibold">
+                          <button onClick={() => setSelected(new Set(plan.steps.map((s) => s.step_id)))} className="text-purple-600 hover:underline">Markera alla</button>
+                          <span className="text-gray-300">·</span>
+                          <button onClick={() => setSelected(new Set())} className="text-gray-500 hover:underline">Avmarkera alla</button>
+                        </div>
+                      </div>
+                      <div className="max-h-60 overflow-y-auto space-y-1 pr-1">
+                        {plan.steps.map((s) => {
+                          const meta = OP_META[s.op ?? ""] ?? { label: "Åtgärd", icon: Info, color: "text-gray-500" };
+                          const Icon = meta.icon;
+                          const checked = selected.has(s.step_id);
+                          return (
+                            <label
+                              key={s.step_id}
+                              className={`flex items-start gap-2.5 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${checked ? "bg-white border-gray-200" : "bg-gray-50/60 border-gray-100 opacity-60"}`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => toggleStep(s.step_id)}
+                                className="mt-0.5 accent-purple-600 cursor-pointer"
+                              />
+                              <Icon size={14} className={`shrink-0 mt-0.5 ${meta.color}`} />
+                              <span className="text-xs text-gray-700 leading-snug">{s.description}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Olösta */}
+                  {plan.unresolved.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">Kvarstår — kräver vikarie / manuellt</p>
+                      <div className="max-h-32 overflow-y-auto space-y-1">
+                        {plan.unresolved.map((u, i) => (
                           <div key={i} className="flex items-start gap-2 bg-yellow-50 border border-yellow-100 rounded-lg px-3 py-2">
                             <AlertTriangle size={12} className="text-yellow-500 shrink-0 mt-0.5" />
-                            <p className="text-xs text-yellow-800"><span className="font-mono mr-1">{formatDate(w.date)}</span>{w.message}</p>
+                            <p className="text-xs text-yellow-800"><span className="font-mono mr-1">{formatDate(u.date)}</span>{u.message}</p>
                           </div>
                         ))}
                       </div>
                     </div>
                   )}
-                  <button onClick={() => setOpen(false)} className="w-full border border-gray-200 hover:bg-gray-50 text-gray-600 py-2.5 rounded-xl text-sm font-medium transition-colors">
-                    Stäng
-                  </button>
-                </div>
+                </>
               )}
             </div>
+
+            {/* Footer-knappar */}
+            {plan && !result && (
+              <div className="px-6 py-4 border-t border-gray-100 flex gap-2 shrink-0">
+                <button
+                  onClick={() => setOpen(false)}
+                  disabled={applying}
+                  className="px-4 py-2.5 border border-gray-200 hover:bg-gray-50 text-gray-600 rounded-xl text-sm font-medium transition-colors"
+                >
+                  Avbryt
+                </button>
+                <button
+                  onClick={() => approve(selectedSteps)}
+                  disabled={applying || selectedSteps.length === 0}
+                  className="flex-1 flex items-center justify-center gap-2 border border-purple-200 text-purple-700 hover:bg-purple-50 disabled:opacity-50 py-2.5 rounded-xl text-sm font-semibold transition-colors"
+                >
+                  Godkänn valda ({selectedSteps.length})
+                </button>
+                <button
+                  onClick={() => approve(plan.steps)}
+                  disabled={applying || plan.steps.length === 0}
+                  className="flex-1 flex items-center justify-center gap-2 bg-terracotta hover:bg-clay disabled:opacity-50 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors"
+                >
+                  {applying ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                  Godkänn alla
+                </button>
+              </div>
+            )}
+
+            {result && (
+              <div className="px-6 py-4 border-t border-gray-100 flex justify-end shrink-0">
+                <button
+                  onClick={() => setOpen(false)}
+                  className="px-5 py-2.5 bg-terracotta hover:bg-clay text-white rounded-xl text-sm font-semibold transition-colors"
+                >
+                  Stäng
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

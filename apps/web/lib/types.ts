@@ -116,6 +116,40 @@ export interface HourlyRequirement {
   prioritized_activities: string[];
 }
 
+export interface FixStep {
+  step_id: string;
+  op: string | null;
+  employee_id: string | null;
+  employee_name: string | null;
+  date: string | null;
+  slot: string | null;
+  added_hours: number | null;
+  description: string;
+  resolves_rule: string;
+}
+
+export interface UnresolvedItem {
+  rule_name: string;
+  date: string;
+  message: string;
+}
+
+export interface FixPlan {
+  steps: FixStep[];
+  warnings_before: number;
+  warnings_after_if_all: number;
+  new_hard_errors: number;
+  unresolved: UnresolvedItem[];
+  explanation: string;
+}
+
+export interface ApplyPlanResult {
+  ok: boolean;
+  applied_count: number;
+  warnings_after: number;
+  hard_errors_after: number;
+}
+
 export interface Bemanningskrav {
   group: Group;
   date: string; // ISO date "YYYY-MM-DD"

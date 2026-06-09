@@ -1,4 +1,4 @@
-import type { Employee, ScheduleDay, GenerateResponse, PeriodInfo, Phase, Bemanningskrav, HourlyRequirement, ValidationResult } from "./types";
+import type { Employee, ScheduleDay, GenerateResponse, PeriodInfo, Phase, Bemanningskrav, HourlyRequirement, ValidationResult, FixPlan, FixStep, ApplyPlanResult } from "./types";
 import { getToken, clearToken } from "./auth";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:9000";
@@ -266,6 +266,36 @@ export async function fetchValidation(
 ): Promise<import("./types").ValidationResult | null> {
   const res = await apiFetch(`${BASE}/api/validate/${encodeURIComponent(group)}/${year}/${month}`);
   if (!res.ok) return null;
+  return res.json();
+}
+
+// ── AI-åtgärdsplanerare (flerstegs) ───────────────────────────────────────────
+
+export async function fetchFixPlan(
+  group: string, year: number, month: number,
+): Promise<FixPlan> {
+  const res = await apiFetch(`${BASE}/api/ai/plan-fixes`, {
+    method: "POST",
+    body: JSON.stringify({ group, year, month }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail ?? "Kunde inte bygga åtgärdsplan");
+  }
+  return res.json();
+}
+
+export async function applyFixPlan(
+  group: string, year: number, month: number, steps: FixStep[],
+): Promise<ApplyPlanResult> {
+  const res = await apiFetch(`${BASE}/api/ai/apply-plan`, {
+    method: "POST",
+    body: JSON.stringify({ group, year, month, steps }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail ?? "Kunde inte tillämpa åtgärdsplan");
+  }
   return res.json();
 }
 
