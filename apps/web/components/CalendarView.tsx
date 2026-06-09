@@ -46,9 +46,10 @@ interface Props {
   phase: Phase;
   aptDate?: string | null;
   onEditDay: (empId: string, dateStr: string, currentDay: ScheduleDay | null) => void;
+  selectedWeek?: number | "all";
 }
 
-export function CalendarView({ employees, scheduleIndex, errorIndex, wishIndex, year, month, phase, aptDate, onEditDay }: Props) {
+export function CalendarView({ employees, scheduleIndex, errorIndex, wishIndex, year, month, phase, aptDate, onEditDay, selectedWeek = "all" }: Props) {
   const n = getDaysInMonth(new Date(year, month - 1));
   const firstWd = (getDay(new Date(year, month - 1, 1)) + 6) % 7; // 0=Mån
 
@@ -66,6 +67,8 @@ export function CalendarView({ employees, scheduleIndex, errorIndex, wishIndex, 
         const firstReal = week.find(d => d !== null);
         if (!firstReal) return null;
         const wn = isoWeek(new Date(year, month - 1, firstReal));
+
+        if (selectedWeek !== "all" && wn !== selectedWeek) return null;
 
         return (
           <div key={wi} className={wi > 0 ? "border-t-2 border-gray-300" : ""}>

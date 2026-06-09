@@ -110,6 +110,42 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
   const daysInMonth = getDaysInMonth(new Date(year, month - 1));
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
+  const [selectedWeek, setSelectedWeek] = useState<number | "all">("all");
+
+  // Reset selectedWeek when month or year changes
+  useEffect(() => {
+    setSelectedWeek("all");
+  }, [year, month]);
+
+  // Calculate weeks in the month (exactly like CalendarView does)
+  const firstWd = (getDay(new Date(year, month - 1, 1)) + 6) % 7; // 0=Mån
+  const padded: (number | null)[] = [...Array(firstWd).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+  while (padded.length % 7 !== 0) padded.push(null);
+  const weeks: (number | null)[][] = [];
+  for (let i = 0; i < padded.length; i += 7) weeks.push(padded.slice(i, i + 7));
+
+  function getIsoWeek(d: Date) {
+    const t = new Date(d);
+    t.setDate(t.getDate() + 3 - ((t.getDay() + 6) % 7));
+    const w = new Date(t.getFullYear(), 0, 4);
+    return 1 + Math.round(((t.getTime() - w.getTime()) / 86400000 - 3 + ((w.getDay() + 6) % 7)) / 7);
+  }
+
+  const weeksList = weeks.map((week) => {
+    const firstReal = week.find(d => d !== null);
+    if (firstReal === undefined) return null;
+    const wn = getIsoWeek(new Date(year, month - 1, firstReal));
+    const weekDays = week.filter((d): d is number => d !== null);
+    return {
+      weekNumber: wn,
+      days: weekDays,
+    };
+  }).filter((w): w is { weekNumber: number; days: number[] } => w !== null);
+
+  const activeDays = selectedWeek === "all"
+    ? days
+    : (weeksList.find(w => w.weekNumber === selectedWeek)?.days ?? days);
+
   function isWeekend(day: number) {
     const d = new Date(year, month - 1, day);
     const wd = getDay(d);
@@ -496,6 +532,34 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
               </div>
             )}
 
+            {/* Adaptiv veckoväljare */}
+            <div className="flex flex-wrap items-center gap-2 bg-white p-3 rounded-2xl border border-ink/8">
+              <span className="text-[10px] text-ink-soft/70 font-bold uppercase tracking-wider pl-1 mr-2 select-none">Visa period:</span>
+              <button
+                onClick={() => setSelectedWeek("all")}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedWeek === "all"
+                    ? "bg-terracotta text-white shadow-md shadow-terracotta/10"
+                    : "bg-ink/5 text-ink-soft hover:text-ink hover:bg-ink/8"
+                }`}
+              >
+                Hela månaden
+              </button>
+              {weeksList.map((w) => (
+                <button
+                  key={w.weekNumber}
+                  onClick={() => setSelectedWeek(w.weekNumber)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    selectedWeek === w.weekNumber
+                      ? "bg-terracotta text-white shadow-md shadow-terracotta/10"
+                      : "bg-ink/5 text-ink-soft hover:text-ink hover:bg-ink/8"
+                  }`}
+                >
+                  Vecka {w.weekNumber}
+                </button>
+              ))}
+            </div>
+
             {/* Kalendervy */}
             {viewMode === "calendar" && (
               <CalendarView
@@ -508,6 +572,7 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
                 phase={phase}
                 aptDate={aptDate}
                 onEditDay={handleOpenEditor}
+                selectedWeek={selectedWeek}
               />
             )}
 
@@ -523,7 +588,7 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
                       <th className="px-2 py-3 font-bold text-gray-500 border-r border-ink/5 w-8">
                         Typ
                       </th>
-                      {days.map(d => (
+                      {activeDays.map(d => (
                         <th
                           key={d}
                           className={`w-8 py-2 font-bold ${
@@ -563,7 +628,7 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
                             {CONTRACT_LABEL[emp.contract_type] ?? emp.contract_type}
                           </td>
                           {/* Day cells */}
-                          {days.map(d => {
+                          {activeDays.map(d => {
                             const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
                             const dayData = empSchedule.get(dateStr) ?? {
                               date: dateStr,
@@ -601,7 +666,7 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
                     })}
                     {groupEmployees.length === 0 && (
                       <tr>
-                        <td colSpan={daysInMonth + 3} className="text-center py-12 text-gray-400">
+                        <td colSpan={activeDays.length + 3} className="text-center py-12 text-gray-400">
                           Inga anställda i {group} — se till att databasen är seedad.
                         </td>
                       </tr>
@@ -615,7 +680,7 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
                         Bemanning
                       </td>
                       <td className="border-r border-ink/5" />
-                      {days.map(d => {
+                      {activeDays.map(d => {
                         const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
                         let fm = 0, kval = 0;
                         for (const emp of groupEmployees) {
