@@ -269,6 +269,17 @@ export async function fetchValidation(
   return res.json();
 }
 
+// TEMPORÄR (demo) — rensar schemat för en grupp/månad. Ta bort efter demon.
+export async function clearSchedule(
+  group: string, year: number, month: number,
+): Promise<PeriodInfo> {
+  const res = await apiFetch(`${BASE}/api/schedule/${encodeURIComponent(group)}/${year}/${month}/clear`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Kunde inte rensa schemat");
+  return res.json();
+}
+
 // ── AI-åtgärdsplanerare (flerstegs) ───────────────────────────────────────────
 
 export async function fetchFixPlan(

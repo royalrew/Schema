@@ -262,6 +262,39 @@ async def advance_phase(
     return PeriodInfo(phase=row.phase, has_schedule=bool(row.schedule), apt_date=row.apt_date, apt_time=row.apt_time, wish_deadline=row.wish_deadline, decisions=_parse_decisions(row.decisions))
 
 
+# TEMPORÄR (demo) — rensar ett genererat schema så en grupp/månad visas tom.
+# Ta bort efter demon. Påverkar inte personalens önskemål (de ligger på EmployeeRow).
+@router.post("/schedule/{group}/{year}/{month}/clear", response_model=PeriodInfo)
+async def clear_schedule(
+    group: str, year: int, month: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserRow = Depends(require_admin_or_schemaansvarig),
+):
+    if current_user.username.startswith("demo_"):
+        group = f"Granbacken ({current_user.username})"
+
+    stmt = select(SchedulePeriodRow).where(
+        SchedulePeriodRow.group_name == group,
+        SchedulePeriodRow.year == year,
+        SchedulePeriodRow.month == month,
+    )
+    row = (await db.execute(stmt)).scalar_one_or_none()
+
+    timestamp_str = datetime.now(STOCKHOLM).strftime("%Y-%m-%d %H:%M")
+    log_entry = f"[{timestamp_str}] Schemat rensat (demo) av {current_user.full_name or current_user.username}."
+
+    if not row:
+        row = SchedulePeriodRow(group_name=group, year=year, month=month, phase="wish", schedule=[], decisions=[log_entry])
+        db.add(row)
+    else:
+        row.schedule = []
+        row.phase = "wish"
+        row.decisions = [log_entry]
+
+    await db.commit()
+    return PeriodInfo(phase=row.phase, has_schedule=False, apt_date=row.apt_date, apt_time=row.apt_time, wish_deadline=row.wish_deadline, decisions=_parse_decisions(row.decisions))
+
+
 @router.post("/period/{group}/{year}/{month}/apt", response_model=PeriodInfo)
 async def set_apt(
     group: str, year: int, month: int,

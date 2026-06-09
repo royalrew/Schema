@@ -2,7 +2,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { format, getDaysInMonth, getDay } from "date-fns";
 import { sv } from "date-fns/locale";
-import { Loader2, Play, ChevronLeft, ChevronRight, LayoutGrid, Calendar, Settings, Printer, FileSpreadsheet, Users, ClipboardList } from "lucide-react";
+import { Loader2, Play, ChevronLeft, ChevronRight, LayoutGrid, Calendar, Settings, Printer, FileSpreadsheet, Users, ClipboardList, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { DayCell } from "./DayCell";
 import { CalendarView } from "./CalendarView";
@@ -12,7 +12,7 @@ import { ValidationPanel } from "./ValidationPanel";
 import { PhaseBar } from "./PhaseBar";
 import { AIModal } from "./AIModal";
 import { BeslutsloggPanel } from "./BeslutsloggPanel";
-import { generateSchedule, fetchEmployees, fetchSchedule, fetchPeriodInfo, fetchValidation, advancePhase, updateWishes, setApt, setWishDeadline, fetchShiftConfigs, updateScheduleDay, type UpdateScheduleDayData } from "@/lib/api";
+import { generateSchedule, fetchEmployees, fetchSchedule, fetchPeriodInfo, fetchValidation, advancePhase, updateWishes, setApt, setWishDeadline, fetchShiftConfigs, updateScheduleDay, clearSchedule, type UpdateScheduleDayData } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { ScheduleDayEditor, type ShiftPreset } from "./ScheduleDayEditor";
 import type { Employee, ScheduleDay, ValidationResult, ValidationError, Phase } from "@/lib/types";
@@ -172,6 +172,25 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
       setDecisions(result.decisions ?? []);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Okänt fel");
+    } finally {
+      setLoading(false);
+    }
+  }, [group, year, month]);
+
+  // TEMPORÄR (demo) — rensar schemat för vald grupp/månad. Ta bort efter demon.
+  const handleClear = useCallback(async () => {
+    if (!window.confirm(`Rensa schemat för ${group} ${month}/${year}? Detta tar bort det genererade schemat (önskemålen påverkas inte).`)) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const info = await clearSchedule(group, year, month);
+      setSchedule([]);
+      setValidation(null);
+      setStats(null);
+      setPhase(info.phase);
+      setDecisions(info.decisions ?? []);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Kunde inte rensa schemat");
     } finally {
       setLoading(false);
     }
@@ -374,6 +393,16 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
               }}
             />
           )}
+
+          {/* TEMPORÄR (demo) — Rensa schema. Ta bort efter demon. */}
+          <button
+            onClick={handleClear}
+            disabled={loading}
+            title="Tillfällig demo-knapp: rensar schemat för vald grupp/månad"
+            className="flex items-center gap-2 border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+          >
+            <Trash2 size={14} /> Rensa (demo)
+          </button>
 
           {/* Generate button */}
           <button
