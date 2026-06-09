@@ -290,3 +290,66 @@ def test_target_shifts_prioritization_and_validation():
     rule_names = {w.rule_name for w in warnings}
     assert "mal_dagar_avvikelse" in rule_names
     assert "mal_kvallar_avvikelse" in rule_names
+
+
+def test_wish_delad_tur_assigned():
+    from app.engine.schemas import WishShiftEntry
+    test_date = date(2026, 6, 1)
+    date_str = test_date.isoformat()
+    
+    # 3 anställda: Sara önskar delad_tur. Anders och Bengt har inga önskemål.
+    employees = [
+        Employee(
+            id="T01",
+            name="Sara",
+            contract_type=ContractType.VARIERANDE,
+            group=Group.NORRA,
+            wish_schedule=[
+                WishShiftEntry(date=date_str, shift_type="delad_tur", start_time="07:00", end_time="20:00")
+            ],
+        ),
+        Employee(
+            id="T02",
+            name="Anders",
+            contract_type=ContractType.VARIERANDE,
+            group=Group.NORRA,
+        ),
+        Employee(
+            id="T03",
+            name="Bengt",
+            contract_type=ContractType.VARIERANDE,
+            group=Group.NORRA,
+        ),
+    ]
+
+    # Bemanningskrav: 2 fm (Sara och en till), 1 kval (Sara)
+    # Eftersom Sara gör delad tur, täcker hon 1 fm och 1 kval.
+    # Då behövs ytterligare 1 person på fm (vilket blir Anders eller Bengt för nattrapporten/DAG_TIDIG).
+    # Den tredje personen (Bengt eller Anders) ska vara ledig.
+    krav = [
+        Bemanningskrav(
+            group=Group.NORRA,
+            date=test_date,
+            fm_heads=2,
+            kval_heads=1,
+        )
+    ]
+
+    schedule, stats = generate_schedule(employees, krav, test_date, test_date)
+
+    assert stats["hard_errors"] == 0, f"Förväntade noll hårda fel, fick: {stats['hard_errors']}"
+
+    assignments = {sd.employee_id: sd for sd in schedule if sd.date == test_date}
+
+    # T01 (Sara) ska ha fått DELAD_TUR
+    sara_day = assignments["T01"]
+    assert sara_day.shift is not None, "Sara borde ha schemalagts"
+    assert sara_day.shift.shift_type == ShiftType.DELAD_TUR, "Sara borde ha fått delad tur"
+    assert len(sara_day.shift.segments) == 2, "Delad tur ska ha 2 segment"
+
+    # En av de andra ska ha fått DAG_TIDIG för nattrapporten
+    # Den sista ska vara helt ledig (shift=None)
+    shifts = [assignments["T02"].shift, assignments["T03"].shift]
+    assert any(s is None for s in shifts), "En av Anders eller Bengt måste vara ledig"
+    assert any(s is not None and s.shift_type == ShiftType.DAG_TIDIG for s in shifts), "En av dem måste ha fått DAG_TIDIG"
+

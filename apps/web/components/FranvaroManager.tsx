@@ -56,6 +56,15 @@ function toperiods(absences: Employee["absences"]): Period[] {
   return periods;
 }
 
+/**
+ * Renders the FranvaroManager component, allowing management of
+ * employee absences (vacation, parental leave, sick leave, etc.).
+ *
+ * @param props - The component properties.
+ * @param props.employee - The employee object containing current absences.
+ * @param props.onUpdate - Callback triggered when the absences are updated.
+ * @returns The rendered FranvaroManager component.
+ */
 export function FranvaroManager({ employee, onUpdate }: Props) {
   const [periods, setPeriods] = useState<Period[]>(() =>
     toperiods(employee.absences as Employee["absences"])
@@ -113,14 +122,14 @@ export function FranvaroManager({ employee, onUpdate }: Props) {
         <button
           onClick={save}
           disabled={saving}
-          className="flex items-center gap-1.5 bg-terracotta hover:bg-clay disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-semibold"
+          className="flex items-center gap-1.5 bg-terracotta hover:bg-clay disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0"
         >
           <Save size={12} />
           {saving ? "Sparar…" : saved ? "Sparat!" : "Spara"}
         </button>
       </div>
 
-      <div className="divide-y divide-gray-50">
+      <div className="divide-y divide-gray-100">
         {periods.length === 0 && (
           <p className="px-4 py-5 text-sm text-gray-400 text-center">Ingen frånvaro registrerad.</p>
         )}
@@ -132,47 +141,55 @@ export function FranvaroManager({ employee, onUpdate }: Props) {
           const days = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
 
           return (
-            <div key={p.id} className="px-4 py-3 space-y-2">
-              <div className="flex items-center gap-3">
-                {/* Typ */}
-                <select
-                  value={p.absence_type}
-                  onChange={e => updatePeriod(p.id, { absence_type: e.target.value })}
-                  className="border border-gray-200 rounded-lg px-2 py-1.5 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40"
-                >
-                  {ABSENCE_TYPES.map(t => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
+            <div key={p.id} className="px-4 py-3 space-y-2 border-b border-gray-100 last:border-b-0 bg-white">
+              {/* Header: Typ dropdown till vänster, Dagar och Radera till höger */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <select
+                    value={p.absence_type}
+                    onChange={e => updatePeriod(p.id, { absence_type: e.target.value })}
+                    className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-terracotta/40 bg-white font-medium text-gray-700"
+                  >
+                    {ABSENCE_TYPES.map(t => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full ${typeInfo.color} ${typeInfo.text}`}>
+                    {days} dag{days !== 1 ? "ar" : ""}
+                  </span>
+                  <button
+                    onClick={() => removePeriod(p.id)}
+                    className="p-1 text-gray-300 hover:text-red-400 transition-colors"
+                    title="Ta bort"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
 
-                {/* Datumintervall */}
-                <div className="flex items-center gap-2 flex-1">
+              {/* Datumintervall: Från och med till vänster, Till och med till höger */}
+              <div className="grid grid-cols-2 gap-2 items-center">
+                <div>
+                  <p className="text-[10px] text-gray-400 mb-0.5">Från och med</p>
                   <input
                     type="date"
                     value={p.start_date}
                     onChange={e => updatePeriod(p.id, { start_date: e.target.value })}
-                    className="border border-gray-200 rounded-lg px-2 py-1.5 text-base md:text-sm font-mono focus:outline-none focus:ring-2 focus:ring-terracotta/40"
+                    className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-terracotta/40 bg-white"
                   />
-                  <span className="text-gray-300">–</span>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400 mb-0.5">Till och med</p>
                   <input
                     type="date"
                     value={p.end_date}
                     min={p.start_date}
                     onChange={e => updatePeriod(p.id, { end_date: e.target.value })}
-                    className="border border-gray-200 rounded-lg px-2 py-1.5 text-base md:text-sm font-mono focus:outline-none focus:ring-2 focus:ring-terracotta/40"
+                    className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-terracotta/40 bg-white"
                   />
                 </div>
-
-                {/* Dagar + ta bort */}
-                <span className={`text-xs font-semibold px-2 py-1 rounded-full ${typeInfo.color} ${typeInfo.text}`}>
-                  {days} dag{days !== 1 ? "ar" : ""}
-                </span>
-                <button
-                  onClick={() => removePeriod(p.id)}
-                  className="text-gray-300 hover:text-red-400 transition-colors"
-                >
-                  <Trash2 size={14} />
-                </button>
               </div>
             </div>
           );

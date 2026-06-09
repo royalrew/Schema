@@ -74,7 +74,7 @@ test.describe("Inloggning", () => {
   test("ej inloggad användare redirectas från /dashboard till /login", async ({ page }) => {
     // Navigera först till en sida, sedan rensa auth och gå till /dashboard
     await page.goto("/login");
-    await page.evaluate(() => localStorage.clear());
+    await page.evaluate(() => sessionStorage.clear());
     await page.goto("/dashboard");
     await expect(page).toHaveURL(/\/login/, { timeout: 5000 });
   });
@@ -115,8 +115,8 @@ test.describe("Dashboard", () => {
   test("Logga ut-knappen rensar session och skickar till login", async ({ page }) => {
     await page.getByRole("button", { name: /Logga ut/i }).click();
     await expect(page).toHaveURL(/\/login/, { timeout: 5000 });
-    // Verifiera att localStorage är rensat
-    const token = await page.evaluate(() => localStorage.getItem("auth_token"));
+    // Verifiera att sessionStorage är rensat
+    const token = await page.evaluate(() => sessionStorage.getItem("auth_token"));
     expect(token).toBeNull();
   });
 });

@@ -343,7 +343,9 @@ export function PersonalCalendar({
                       label: wishEntry.shift_type
                         ? (SHIFT[wishEntry.shift_type]?.label ?? wishEntry.shift_type)
                         : "Anpassad",
-                      sub: `${wishEntry.start_time}–${wishEntry.end_time}`,
+                      sub: wishEntry.shift_type === "delad_tur"
+                        ? "07:00–13:00 + 15:30–20:00"
+                        : `${wishEntry.start_time}–${wishEntry.end_time}`,
                       bg: wishEntry.shift_type ? (SHIFT[wishEntry.shift_type]?.bg ?? "#6366f1") : "#6366f1",
                       fg: "#fff",
                     };

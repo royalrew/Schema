@@ -5,7 +5,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { sv } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, LogOut, Users, Settings, ClipboardList, AlertTriangle, CheckCircle2, Clock, Plus, Shield, BookOpen, Scale } from "lucide-react";
-import { getUser, clearToken, isLoggedIn } from "@/lib/auth";
+import { getUser, clearToken, isLoggedIn, getToken } from "@/lib/auth";
 import { WelcomeGuide } from "@/components/WelcomeGuide";
 import { ChangePasswordModal } from "@/components/ChangePasswordModal";
 
@@ -55,7 +55,7 @@ export default function Dashboard() {
     if (!isLoggedIn()) return;
     setLoading(true);
     try {
-      const token = localStorage.getItem("auth_token");
+      const token = getToken();
       const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
       const res = await fetch(`${BASE}/api/groups`, { headers });
@@ -125,9 +125,6 @@ export default function Dashboard() {
           <div className="flex items-center gap-2">
             <Link href="/medarbetare" className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors">
               <Users size={14} /> Personal
-            </Link>
-            <Link href="/roller" className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors">
-              <Shield size={14} /> Roller
             </Link>
             {user?.role === "superadmin" && (
               <Link href="/systembeskrivning" className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors">

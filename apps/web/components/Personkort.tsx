@@ -42,6 +42,15 @@ function newConstraint(): SoftConstraint {
   };
 }
 
+/**
+ * Renders the Personkort (personnel card) component, which manages
+ * recurring soft constraints (life patterns) for a specific employee.
+ *
+ * @param props - The component properties.
+ * @param props.employee - The employee object.
+ * @param props.onUpdate - Callback triggered when the employee's soft constraints are updated.
+ * @returns The rendered Personkort component.
+ */
 export function Personkort({ employee, onUpdate }: Props) {
   const existing = (employee as unknown as { soft_constraints?: SoftConstraint[] }).soft_constraints ?? [];
   const [constraints, setConstraints] = useState<SoftConstraint[]>(existing);
@@ -102,7 +111,7 @@ export function Personkort({ employee, onUpdate }: Props) {
         <button
           onClick={save}
           disabled={saving}
-          className="flex items-center gap-1.5 bg-terracotta hover:bg-clay disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+          className="flex items-center gap-1.5 bg-terracotta hover:bg-clay disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shrink-0"
         >
           <Save size={12} />
           {saving ? "Sparar…" : saved ? "Sparat!" : "Spara"}
@@ -110,7 +119,7 @@ export function Personkort({ employee, onUpdate }: Props) {
       </div>
 
       {/* Constraints */}
-      <div className="divide-y divide-gray-50">
+      <div className="divide-y divide-gray-100">
         {constraints.length === 0 && (
           <p className="px-4 py-6 text-sm text-gray-400 text-center">
             Inga livsmönster inlagda. Klicka "+ Lägg till" för att börja.
@@ -120,15 +129,28 @@ export function Personkort({ employee, onUpdate }: Props) {
         {constraints.map(c => {
           const typeInfo = CONSTRAINT_TYPES.find(t => t.value === c.constraint_type) ?? CONSTRAINT_TYPES[0];
           return (
-            <div key={c.id} className="px-4 py-3 space-y-3">
-              <div className="flex items-start gap-3">
+            <div key={c.id} className="px-4 py-3 space-y-2 border-b border-gray-100 last:border-b-0 bg-white">
+              {/* Header row: Label/Icon and Delete button */}
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Livsmönster</span>
+                <button
+                  onClick={() => removeConstraint(c.id)}
+                  className="p-1 text-gray-300 hover:text-red-400 transition-colors"
+                  title="Ta bort"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+
+              {/* Grid for Selects */}
+              <div className="grid grid-cols-2 gap-2">
                 {/* Typ */}
-                <div className="shrink-0">
-                  <p className="text-xs text-gray-400 mb-1">Typ</p>
+                <div>
+                  <p className="text-[10px] text-gray-400 mb-0.5">Typ</p>
                   <select
                     value={c.constraint_type}
                     onChange={e => updateConstraint(c.id, { constraint_type: e.target.value })}
-                    className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-terracotta/40"
+                    className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-terracotta/40 bg-white text-gray-700"
                   >
                     {CONSTRAINT_TYPES.map(t => (
                       <option key={t.value} value={t.value}>{t.label}</option>
@@ -137,44 +159,36 @@ export function Personkort({ employee, onUpdate }: Props) {
                 </div>
 
                 {/* Veckor */}
-                <div className="shrink-0">
-                  <p className="text-xs text-gray-400 mb-1">Vilka veckor</p>
+                <div>
+                  <p className="text-[10px] text-gray-400 mb-0.5">Vilka veckor</p>
                   <select
                     value={c.week_parity}
                     onChange={e => updateConstraint(c.id, { week_parity: e.target.value })}
-                    className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-terracotta/40"
+                    className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-terracotta/40 bg-white text-gray-700"
                   >
                     {PARITY_OPTIONS.map(p => (
                       <option key={p.value} value={p.value}>{p.label}</option>
                     ))}
                   </select>
                 </div>
+              </div>
 
-                {/* Notering */}
-                <div className="flex-1">
-                  <p className="text-xs text-gray-400 mb-1">Förklaring</p>
-                  <input
-                    type="text"
-                    placeholder="t.ex. Barn varannan vecka, Golf lördagar"
-                    value={c.note}
-                    onChange={e => updateConstraint(c.id, { note: e.target.value })}
-                    className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-terracotta/40"
-                  />
-                </div>
-
-                {/* Ta bort */}
-                <button
-                  onClick={() => removeConstraint(c.id)}
-                  className="mt-5 p-1 text-gray-300 hover:text-red-400 transition-colors"
-                >
-                  <Trash2 size={14} />
-                </button>
+              {/* Notering */}
+              <div>
+                <p className="text-[10px] text-gray-400 mb-0.5">Förklaring</p>
+                <input
+                  type="text"
+                  placeholder="t.ex. Barn varannan vecka, Golf lördagar"
+                  value={c.note}
+                  onChange={e => updateConstraint(c.id, { note: e.target.value })}
+                  className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-terracotta/40"
+                />
               </div>
 
               {/* Dagar */}
               <div>
-                <p className="text-xs text-gray-400 mb-1.5">Veckodagar</p>
-                <div className="flex gap-1">
+                <p className="text-[10px] text-gray-400 mb-1">Veckodagar</p>
+                <div className="grid grid-cols-7 gap-1">
                   {DAY_NAMES.map((name, idx) => {
                     const selected = c.weekdays.includes(idx);
                     const isWe = idx >= 5;
@@ -182,7 +196,7 @@ export function Personkort({ employee, onUpdate }: Props) {
                       <button
                         key={idx}
                         onClick={() => toggleDay(c.id, idx)}
-                        className={`px-2 py-1 rounded-md text-xs font-medium transition-colors border ${
+                        className={`py-1 rounded-md text-xs font-medium transition-colors border text-center ${
                           selected
                             ? c.constraint_type === "prefer_off" || c.constraint_type === "avoid"
                               ? "bg-red-500 text-white border-red-500"
@@ -201,7 +215,7 @@ export function Personkort({ employee, onUpdate }: Props) {
 
               {/* Sammanfattning */}
               {c.weekdays.length > 0 && c.note && (
-                <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs border ${typeInfo.color}`}>
+                <div className={`flex flex-wrap items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs border ${typeInfo.color}`}>
                   <span className="font-medium">{typeInfo.label}:</span>
                   <span>{c.note}</span>
                   <span className="opacity-60">

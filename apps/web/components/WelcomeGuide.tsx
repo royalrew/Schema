@@ -20,9 +20,9 @@ function getSteps(role: string, employeeId: string | null): Step[] {
       {
         icon: <Users size={20} className="text-terracotta" />,
         title: "Bjud in din personal",
-        desc: "Gå till Roller & Behörigheter, välj en anställd och tilldela rollen 'Personal'. En inbjudningslänk skapas automatiskt.",
-        href: "/roller",
-        cta: "Öppna Roller →",
+        desc: "Gå till Personal & Behörigheter, klicka på en anställd för att tilldela rollen 'Personal' eller konfigurera deras systembehörighet.",
+        href: "/medarbetare",
+        cta: "Hantera personal →",
       },
       {
         icon: <ClipboardList size={20} className="text-amber-600" />,

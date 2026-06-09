@@ -162,6 +162,7 @@ def generate_schedule(
     # Spåra: antal tilldelade dag- och kvällspass per medarbetare
     scheduled_days_count: dict[str, int] = defaultdict(int)
     scheduled_evenings_count: dict[str, int] = defaultdict(int)
+    scheduled_delad_tur_count: dict[str, int] = defaultdict(int)
 
     # Spåra: blockerade dagpass på grund av önskemålskorrigering
     blocked_day_shifts: set[tuple[str, date]] = set()
@@ -221,15 +222,13 @@ def generate_schedule(
         if wish_for_day != "NOT_SET":
             wished_val = wish_for_day.value if hasattr(wish_for_day, "value") else str(wish_for_day)
             
-            is_day_shift = shift_type in (ShiftType.DAG, ShiftType.DAG_TIDIG)
-            is_kval_shift = shift_type in (ShiftType.KVAL_KORT, ShiftType.KVAL_LANG)
-            is_natt_shift = shift_type == ShiftType.NATT
+            allowed_types = {wished_val}
+            if wished_val in (ShiftType.DAG.value, ShiftType.DAG_TIDIG.value):
+                allowed_types = {ShiftType.DAG, ShiftType.DAG_TIDIG}
+            elif wished_val in (ShiftType.KVAL_KORT.value, ShiftType.KVAL_LANG.value):
+                allowed_types = {ShiftType.KVAL_KORT, ShiftType.KVAL_LANG}
             
-            if wished_val in (ShiftType.DAG.value, ShiftType.DAG_TIDIG.value) and not is_day_shift:
-                return False
-            if wished_val in (ShiftType.KVAL_KORT.value, ShiftType.KVAL_LANG.value) and not is_kval_shift:
-                return False
-            if wished_val == ShiftType.NATT.value and not is_natt_shift:
+            if shift_type not in allowed_types:
                 return False
 
         weekday = d.weekday()
@@ -245,6 +244,9 @@ def generate_schedule(
             weekend_id = _get_weekend_id(d)
             if work_days_by_weekend[emp.id][weekend_id] >= 3:
                 return False
+        # Delad tur är endast tillåtet för varierande och helgarbetare (fre-mån)
+        if shift_type == ShiftType.DELAD_TUR and emp.contract_type not in (ContractType.VARIERANDE, ContractType.HELG_FRE_MAN):
+            return False
         # Kväll-kontrakt jobbar bara kväll, inte dag
         if emp.contract_type == ContractType.KVAL and shift_type in (ShiftType.DAG_TIDIG, ShiftType.DAG):
             return False
@@ -358,6 +360,8 @@ def generate_schedule(
             scheduled_days_count[emp.id] += 1
         elif shift_type in (ShiftType.KVAL_KORT, ShiftType.KVAL_LANG):
             scheduled_evenings_count[emp.id] += 1
+        elif shift_type == ShiftType.DELAD_TUR:
+            scheduled_delad_tur_count[emp.id] += 1
 
         # Registrera beslut
         if reason:
@@ -557,6 +561,17 @@ def generate_schedule(
                         f"{current.isoformat()}: [Önskemålskorrigering] {emp.name} flyttades till dagpass då kvällspass prioriterades för kvällspersonal."
                     )
 
+            # --- 0. Sök efter och tilldela önskade delade turer (DELAD_TUR) ---
+            delad_wish_candidates = [
+                e for e in group_emps
+                if wish_schedule_idx.get(e.id, {}).get(current) == ShiftType.DELAD_TUR
+                and available(e, current, ShiftType.DELAD_TUR)
+            ]
+            for emp in delad_wish_candidates:
+                assign(emp, current, ShiftType.DELAD_TUR)
+                fm_needed = max(0, fm_needed - 1)
+                kval_needed = max(0, kval_needed - 1)
+
             # --- 1. DAG_TIDIG (06:45-regeln) — exakt 1 per grupp per dag ---
             varierande_emps = [e for e in group_emps if e.contract_type == ContractType.VARIERANDE]
             dag_tidig_candidates = sorted(
@@ -605,9 +620,8 @@ def generate_schedule(
             # --- 3b. Delad tur som sista utväg om BÅDE fm och kval fortfarande saknas ---
             if fm_needed > 0 and kval_needed > 0:
                 delad_candidates = sorted(
-                    [e for e in group_emps if available(e, current, ShiftType.DAG)
-                     and e.contract_type == ContractType.VARIERANDE],
-                    key=lambda e: priority_key(e, current),
+                    [e for e in group_emps if available(e, current, ShiftType.DELAD_TUR)],
+                    key=lambda e: (scheduled_delad_tur_count[e.id], priority_key(e, current)),
                 )
                 for emp in delad_candidates[:1]:  # max 1 delad tur per dag
                     assign(emp, current, ShiftType.DELAD_TUR)
