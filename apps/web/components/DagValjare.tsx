@@ -55,67 +55,10 @@ export function DagValjare({ date, dateLabel, presets, current, onSave, onClose,
   const [note, setNote] = useState(current?.note ?? "");
   const ref = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-  const [position, setPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
   useEffect(() => {
     setMounted(true);
   }, []);
-
-  useEffect(() => {
-    function handleResize() {
-      setIsMobile(window.innerWidth < 640);
-    }
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [onClose]);
-
-  useEffect(() => {
-    if (isMobile) return;
-    function handleScroll() {
-      onClose();
-    }
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, [onClose, isMobile]);
-
-  useEffect(() => {
-    if (!anchorRect || isMobile) return;
-
-    const POPOVER_W = 288;
-    const POPOVER_H = mode === "custom" ? 430 : 370;
-    const MARGIN = 4;
-
-    // Horizontal positioning
-    let left = anchorRect.left + anchorRect.width / 2 - POPOVER_W / 2;
-    left = Math.max(8, Math.min(left, window.innerWidth - POPOVER_W - 8));
-
-    // Vertical positioning (default below)
-    let top = anchorRect.bottom + MARGIN;
-    if (top + POPOVER_H > window.innerHeight) {
-      // Doesn't fit below, try placing it above the cell
-      const topAbove = anchorRect.top - POPOVER_H - MARGIN;
-      if (topAbove >= 8) {
-        top = topAbove;
-      } else {
-        // Doesn't fit above either, center it in the viewport
-        top = Math.max(8, (window.innerHeight - POPOVER_H) / 2);
-      }
-    }
-
-    setPosition({ top, left });
-  }, [anchorRect, isMobile, mode]);
 
   function handleSave() {
     if (mode === "ledig") {
@@ -278,44 +221,21 @@ export function DagValjare({ date, dateLabel, presets, current, onSave, onClose,
     </>
   );
 
-  if (isMobile) {
-    const mobileContent = (
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-[9998]">
-        <div
-          ref={ref}
-          className="bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden w-full max-w-sm z-[9999] max-h-[85vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-155"
-        >
-          {formContent}
-        </div>
-      </div>
-    );
-    return mounted ? createPortal(mobileContent, document.body) : null;
-  }
-
-  // Desktop popover
-  const fixedStyle: React.CSSProperties = anchorRect
-    ? {
-        position: "fixed" as const,
-        top: position.top,
-        left: position.left,
-        width: 288,
-        zIndex: 9999,
-      }
-    : {};
-
-  const desktopContent = (
-    <div
-      ref={ref}
-      className="bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
-      style={anchorRect ? fixedStyle : { position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 4, width: 288, zIndex: 50 }}
+  const modalContent = (
+    <div 
+      className="fixed inset-0 bg-black/45 backdrop-blur-xs flex items-center justify-center p-4 z-[9998] animate-in fade-in duration-150"
+      onClick={onClose}
     >
-      {formContent}
+      <div
+        ref={ref}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden w-full max-w-sm z-[9999] max-h-[85vh] overflow-y-auto animate-in zoom-in-95 duration-155"
+      >
+        {formContent}
+      </div>
     </div>
   );
 
-  if (anchorRect) {
-    return mounted ? createPortal(desktopContent, document.body) : null;
-  }
-  return desktopContent;
+  return mounted ? createPortal(modalContent, document.body) : null;
 }
 
