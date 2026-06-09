@@ -12,6 +12,7 @@ Kärnan är helt deterministisk. Ingen LLM är inblandad här (LLM:en förklarar
 den färdiga planen på svenska, i ai_analyze.py).
 """
 import copy
+import math
 from datetime import date
 
 from app.engine.schemas import Employee, ScheduleDay, Bemanningskrav, ValidationResult
@@ -96,7 +97,12 @@ def _build_step(n: int, w, emp_id: str, emp: Employee | None, meta: dict) -> dic
     elif op == "kval_lang":
         desc = f"Förläng {name}s kvällspass till 21:30 den {_fmt(ds)}."
     elif op == "timbalans":
-        desc = f"Lägg till {meta.get('added_hours', 0):.0f} h OBOKAD-tid för {name} för att nå kontraktstimmarna."
+        added = meta.get("added_hours", 0) or 0
+        dagar = max(1, math.ceil(added / 8.5))  # obokad-pass är max 8,5 h/dag
+        desc = (
+            f"Fyll {name}s timunderskott med ca {added:.0f} h obokad tid, "
+            f"fördelat på {dagar} lediga dagar (max 8,5 h per pass)."
+        )
     elif op == "bemanning":
         desc = f"Omvandla {name}s obokade tid till ett bemanningspass den {_fmt(ds)}."
     else:

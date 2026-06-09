@@ -482,7 +482,7 @@ def fill_with_obokad(
         in_allowed_days = current.weekday() in rules.get("allowed_weekdays", list(range(7)))
 
         if is_free and in_allowed_days:
-            shift_hours = min(deficit, 8.0)
+            shift_hours = min(deficit, 8.5)  # max 8h30m per obokad-pass (07:00–15:30)
             start_dt = datetime(current.year, current.month, current.day, 7, 0, tzinfo=STOCKHOLM)
             end_dt = start_dt + timedelta(hours=shift_hours)
 

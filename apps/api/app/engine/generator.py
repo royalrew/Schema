@@ -708,7 +708,7 @@ def generate_schedule(
         current = period_start
         while current <= period_end and deficit > 1.0:
             if (emp.id, current) not in assignments and available(emp, current, ShiftType.DAG):
-                shift_hours = min(deficit, 8.0)
+                shift_hours = min(deficit, 8.5)  # max 8h30m per obokad-pass (07:00–15:30)
                 start_dt = datetime(current.year, current.month, current.day, 7, 0, tzinfo=STOCKHOLM)
                 end_dt = start_dt + timedelta(hours=shift_hours)
                 obokad = Shift(

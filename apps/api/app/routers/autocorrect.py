@@ -282,7 +282,7 @@ def _simulate_timbalans(
             if sd.get("shift") or sd.get("absence"):
                 continue
 
-        block_h = min(deficit, 8.0)
+        block_h = min(deficit, 8.5)  # ett obokad-pass är max 8h30m (07:00–15:30)
         start_dt = datetime(d.year, d.month, d.day, 7, 0, tzinfo=STOCKHOLM)
         end_dt = start_dt + timedelta(hours=block_h)
         if _violates_dygnsvila(schedule, sched_pos, employee_id, d, start_dt, end_dt):

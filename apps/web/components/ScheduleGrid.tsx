@@ -18,6 +18,7 @@ import { ScheduleDayEditor, type ShiftPreset } from "./ScheduleDayEditor";
 import type { Employee, ScheduleDay, ValidationResult, ValidationError, Phase } from "@/lib/types";
 
 const GROUPS = ["Norra", "Södra", "Östra", "Centrum 1", "Centrum 2", "Centrum 3", "Moholm", "Natten"];
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:9000";
 
 const CONTRACT_LABEL: Record<string, string> = {
   dagtid: "D",
@@ -359,7 +360,7 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
                 <Printer size={14} /> PDF
               </Link>
               <a
-                href={`http://localhost:9000/api/export/${encodeURIComponent(group)}/${year}/${month}/excel?token=${encodeURIComponent(token)}`}
+                href={`${API_BASE}/api/export/${encodeURIComponent(group)}/${year}/${month}/excel?token=${encodeURIComponent(token)}`}
                 download
                 className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors"
                 title="Ladda ner Excel"
@@ -367,7 +368,7 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
                 <FileSpreadsheet size={14} /> Excel
               </a>
               <a
-                href={`http://localhost:9000/api/debug/${encodeURIComponent(group)}/${year}/${month}?token=${encodeURIComponent(token)}`}
+                href={`${API_BASE}/api/debug/${encodeURIComponent(group)}/${year}/${month}?token=${encodeURIComponent(token)}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors"
