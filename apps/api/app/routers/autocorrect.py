@@ -462,7 +462,7 @@ async def fix_dag_tidig(
     for d in days:
         datestr = d.isoformat()
         has_tidig = any(
-            sched_idx.get((e.id, datestr), {}).get("shift", {}).get("shift_type") == "dag_tidig"
+            ((sched_idx.get((e.id, datestr)) or {}).get("shift") or {}).get("shift_type") == "dag_tidig"
             for e in employees
         )
         if has_tidig:
