@@ -5,6 +5,7 @@ import {
   BookOpen, Scale, User, ShieldAlert, Sparkles, Percent, HelpCircle, Check, ArrowLeft, Layers, Info, ThumbsUp, ThumbsDown, Copy, CheckCircle, MessageSquare
 } from "lucide-react";
 import { AuthGuard } from "@/components/AuthGuard";
+import { AdminLayout } from "@/components/AdminLayout";
 
 type Section = "overview" | "roles" | "contracts" | "hours" | "hard-rules" | "soft-rules";
 
@@ -466,23 +467,11 @@ export default function SystembeskrivningPage() {
 
   return (
     <AuthGuard requiredRole="superadmin">
-      <div className="bg-paper min-h-screen text-ink pb-24 relative overflow-hidden">
-        {/* Background decorations */}
-        <div className="absolute top-0 right-0 w-[400px] h-[400px] rounded-full bg-amber/10 blur-3xl pointer-events-none" />
-        <div className="absolute bottom-20 -left-20 w-[500px] h-[500px] rounded-full bg-sage/10 blur-3xl pointer-events-none" />
-
-        {/* ── Header / Nav ── */}
-        <nav className="max-w-4xl mx-auto px-6 pt-8 pb-6 flex justify-between items-center relative z-10">
-          <Link href="/dashboard" className="flex items-center gap-2.5">
-            <div className="w-7 h-7 bg-terracotta rounded-full flex items-center justify-center">
-              <div className="w-2.5 h-2.5 bg-paper rounded-full" />
-            </div>
-            <span className="font-display text-xl">Sintari</span>
-          </Link>
-          <Link href="/dashboard" className="text-xs font-semibold text-ink-soft hover:text-ink transition flex items-center gap-1">
-            <ArrowLeft size={14} /> Till översikten
-          </Link>
-        </nav>
+      <AdminLayout>
+        <div className="bg-paper min-h-screen text-ink pb-24 relative overflow-hidden w-full">
+          {/* Background decorations */}
+          <div className="absolute top-0 right-0 w-[400px] h-[400px] rounded-full bg-amber/10 blur-3xl pointer-events-none" />
+          <div className="absolute bottom-20 -left-20 w-[500px] h-[500px] rounded-full bg-sage/10 blur-3xl pointer-events-none" />
 
         <main className="max-w-4xl mx-auto px-6 relative z-10 space-y-10">
           {/* Page Title */}
@@ -808,12 +797,10 @@ export default function SystembeskrivningPage() {
           {/* ── Footer ── */}
           <footer className="pt-6 border-t border-black/5 text-center flex flex-col sm:flex-row items-center justify-between gap-4">
             <p className="text-xs text-ink-soft/50">© 2026 Sintari · Töreboda schema-guide för Sara</p>
-            <Link href="/dashboard" className="text-xs font-semibold text-terracotta hover:text-clay transition flex items-center gap-1">
-              <ArrowLeft size={12} /> Tillbaka till översikten
-            </Link>
           </footer>
         </main>
       </div>
+      </AdminLayout>
     </AuthGuard>
   );
 }

@@ -7,7 +7,7 @@ import { sv } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, LogOut, Users, Settings, ClipboardList, AlertTriangle, CheckCircle2, Clock, Plus, Shield, BookOpen, Scale } from "lucide-react";
 import { getUser, clearToken, isLoggedIn, getToken } from "@/lib/auth";
 import { WelcomeGuide } from "@/components/WelcomeGuide";
-import { ChangePasswordModal } from "@/components/ChangePasswordModal";
+import { AdminLayout } from "@/components/AdminLayout";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:9000";
 const ORG_NAME = process.env.NEXT_PUBLIC_ORG_NAME ?? "Schemamotor";
@@ -32,7 +32,6 @@ export default function Dashboard() {
   const [user, setUser] = useState<any>(null);
   const [mounted, setMounted] = useState(false);
   const now = new Date();
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [groups, setGroups] = useState<string[]>([]);
@@ -110,59 +109,20 @@ export default function Dashboard() {
   const totalWarnings = statuses.reduce((s, g) => s + g.coverage_warnings, 0);
 
   return (
-    <div className="min-h-screen bg-paper">
+    <AdminLayout>
       {user && <WelcomeGuide userId={user.user_id} />}
-      {/* ── Header ── */}
-      <div className="bg-white/70 backdrop-blur-sm border-b border-ink/8 px-6 py-3">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-terracotta rounded-full flex items-center justify-center">
-              <div className="w-3 h-3 bg-paper rounded-full" />
-            </div>
-            <span className="font-display text-xl">{ORG_NAME}</span>
-          </Link>
-
-          <div className="flex items-center gap-2">
-            <Link href="/medarbetare" className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors">
-              <Users size={14} /> Personal
-            </Link>
-            {user?.role === "superadmin" && (
-              <Link href="/systembeskrivning" className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors">
-                <Scale size={14} /> Systembeskrivning
-              </Link>
-            )}
-            <Link href="/rag" className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors">
-              <BookOpen size={14} /> RAG
-            </Link>
-            <Link href="/schemalagga" className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors">
-              <ClipboardList size={14} /> Bemanning
-            </Link>
-            <Link href="/installningar" className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors">
-              <Settings size={14} /> Passtider
-            </Link>
-            <div className="w-px h-4 bg-gray-200 mx-1" />
-            <span className="text-sm text-gray-600 font-medium">{mounted ? user?.full_name : ""}</span>
-            <button onClick={() => setShowPasswordModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-terracotta hover:bg-cream rounded-lg transition-colors cursor-pointer">
-              <Shield size={14} /> Byt lösenord
-            </button>
-            <button onClick={logout} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-              <LogOut size={14} /> Logga ut
-            </button>
-          </div>
-        </div>
-      </div>
 
       <div className="max-w-6xl mx-auto p-6 space-y-6">
         {/* ── Månadsnavigering + sammanfattning ── */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button onClick={() => { if (month === 1) { setMonth(12); setYear(y => y - 1); } else setMonth(m => m - 1); }}
-              className="p-2 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 text-gray-500 shadow-sm">
+              className="p-2 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 text-gray-500 shadow-sm cursor-pointer">
               <ChevronLeft size={16} />
             </button>
             <h1 className="text-xl font-bold text-gray-900 capitalize">{monthName}</h1>
             <button onClick={() => { if (month === 12) { setMonth(1); setYear(y => y + 1); } else setMonth(m => m + 1); }}
-              className="p-2 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 text-gray-500 shadow-sm">
+              className="p-2 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 text-gray-500 shadow-sm cursor-pointer">
               <ChevronRight size={16} />
             </button>
           </div>
@@ -199,61 +159,56 @@ export default function Dashboard() {
                 Sammanställning av allt vi har byggt, timräkning för heltid och deltid, samt de hårda lagreglerna (dygnsvila, veckovila) och de mjuka verksamhetsreglerna (önskemålskrockar, dagsansvarig, planerare). Visa denna sida för Sara under er genomgång.
               </p>
             </div>
-            <Link 
-              href="/systembeskrivning" 
-              className="bg-terracotta hover:bg-clay text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center gap-1.5 shrink-0 cursor-pointer"
-            >
-              Öppna specifikationen →
+            <Link href="/systembeskrivning" className="w-full md:w-auto bg-terracotta hover:bg-clay text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md shadow-terracotta/10 flex items-center justify-center gap-2 shrink-0">
+              Öppna systemguide
             </Link>
           </div>
         )}
 
         {/* ── Gruppceller ── */}
         {loading ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="bg-white rounded-2xl border border-gray-200 h-36 animate-pulse" />
-            ))}
+          <div className="bg-white/65 border border-ink/8 rounded-3xl p-12 flex items-center justify-center min-h-[200px]">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-6 h-6 border-2 border-terracotta border-t-transparent rounded-full animate-spin" />
+              <span className="text-xs text-ink-soft">Laddar status…</span>
+            </div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {statuses.map(g => {
-              const phase = PHASE_CONFIG[g.phase as keyof typeof PHASE_CONFIG] ?? PHASE_CONFIG.wish;
+              const cfg = PHASE_CONFIG[g.phase as keyof typeof PHASE_CONFIG] || PHASE_CONFIG.wish;
               return (
                 <Link
                   key={g.group}
-                  href={`/schema/${encodeURIComponent(g.group)}`}
-                  className="bg-white/60 rounded-2xl border border-ink/8 p-5 hover:shadow-lg hover:shadow-clay/5 hover:border-terracotta/30 transition-all group"
+                  href={`/schema?group=${encodeURIComponent(g.group)}&year=${year}&month=${month}`}
+                  className="bg-white/60 backdrop-blur-md border border-ink/8 rounded-3xl p-5 hover:shadow-lg hover:border-ink/15 transition-all flex flex-col justify-between group"
                 >
-                  <div className="flex items-start justify-between mb-3">
-                    <h3 className="font-bold text-ink group-hover:text-terracotta transition-colors">{g.group}</h3>
-                    <span className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${phase.bg} ${phase.text}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${phase.dot}`} />
-                      {phase.label}
-                    </span>
-                  </div>
-
-                  <div className="space-y-1.5 text-xs text-gray-500">
-                    <div className="flex items-center gap-1.5">
-                      <Users size={11} className="text-gray-400" />
-                      {g.employee_count} personal
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between">
+                      <h3 className="font-display font-semibold text-lg text-ink group-hover:text-terracotta transition-colors">
+                        {g.group}
+                      </h3>
+                      <span className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${cfg.bg} ${cfg.text}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+                        {cfg.label}
+                      </span>
                     </div>
+
                     {g.has_schedule ? (
-                      <div className="flex items-center gap-1.5">
-                        <CheckCircle2 size={11} className="text-green-500" />
-                        Schema genererat
+                      <div className="flex items-center gap-2 text-xs text-ink-soft">
+                        <Clock size={13} className="text-terracotta" />
+                        <span>{g.employee_count} medarbetare schemalagda</span>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-1.5">
-                        <Clock size={11} className="text-gray-400" />
-                        Inget schema ännu
+                      <div className="text-xs text-ink-soft italic">
+                        Inget aktivt schema genererat
                       </div>
                     )}
                   </div>
 
                   {/* Varningar/fel */}
                   {(g.hard_errors > 0 || g.coverage_warnings > 0) && (
-                    <div className="mt-3 pt-3 border-t border-gray-100 flex gap-2 flex-wrap">
+                    <div className="mt-4 pt-3 border-t border-gray-100 flex gap-2 flex-wrap">
                       {g.hard_errors > 0 && (
                         <span className="text-[10px] font-semibold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">
                           {g.hard_errors} fel
@@ -272,7 +227,6 @@ export default function Dashboard() {
           </div>
         )}
       </div>
-      {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
-    </div>
+    </AdminLayout>
   );
 }

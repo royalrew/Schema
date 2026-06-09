@@ -3,6 +3,7 @@ import { useState, useEffect, use } from "react";
 import { ScheduleGrid } from "@/components/ScheduleGrid";
 import { fetchEmployees, fetchSchedule } from "@/lib/api";
 import { AuthGuard } from "@/components/AuthGuard";
+import { AdminLayout } from "@/components/AdminLayout";
 import type { Employee, ScheduleDay } from "@/lib/types";
 
 interface Props {
@@ -45,19 +46,21 @@ export default function SchemaPage({ params }: Props) {
 
   return (
     <AuthGuard requiredRole="admin">
-      {loading ? (
-        <div className="min-h-screen bg-paper flex items-center justify-center">
-          <div className="w-6 h-6 border-2 border-terracotta border-t-transparent rounded-full animate-spin" />
-        </div>
-      ) : (
-        <ScheduleGrid
-          employees={employees}
-          initialSchedule={schedule}
-          group={decodedGroup}
-          year={year}
-          month={month}
-        />
-      )}
+      <AdminLayout>
+        {loading ? (
+          <div className="flex-1 bg-paper flex items-center justify-center min-h-[400px]">
+            <div className="w-6 h-6 border-2 border-terracotta border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : (
+          <ScheduleGrid
+            employees={employees}
+            initialSchedule={schedule}
+            group={decodedGroup}
+            year={year}
+            month={month}
+          />
+        )}
+      </AdminLayout>
     </AuthGuard>
   );
 }

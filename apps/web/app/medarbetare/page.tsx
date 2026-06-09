@@ -32,6 +32,7 @@ import {
 } from "@/lib/api";
 import { MedarbetareModal } from "@/components/MedarbetareModal";
 import { AuthGuard } from "@/components/AuthGuard";
+import { AdminLayout } from "@/components/AdminLayout";
 import type { Employee } from "@/lib/types";
 
 const CONTRACT_LABEL: Record<string, string> = {
@@ -72,6 +73,7 @@ export default function MedarbetarePage() {
   // States för inline roll- och attributredigering
   const [saveStatus, setSaveStatus] = useState<Record<string, "saving" | "saved" | "error" | null>>({});
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<{ empName: string; userId: number; empId: string } | null>(null);
+  const [activeTab, setActiveTab] = useState<"register" | "permissions">("register");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -245,16 +247,15 @@ export default function MedarbetarePage() {
 
   return (
     <AuthGuard requiredRole="admin">
-      <div className="min-h-screen bg-paper pb-12">
-        {/* Header */}
-        <div className="bg-white border-b border-gray-200 px-6 py-4">
-          <div className="max-w-6xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Link href="/dashboard" className="text-gray-400 hover:text-gray-600 text-sm">← Tillbacka</Link>
-              <div className="w-px h-4 bg-gray-200" />
-              <div className="flex items-center gap-2">
-                <Users size={18} className="text-blue-500" />
-                <h1 className="text-lg font-bold text-gray-900">Personal & Behörigheter</h1>
+      <AdminLayout>
+        <div className="min-h-screen bg-paper pb-12">
+          {/* Header */}
+          <div className="bg-white border-b border-gray-200 px-6 py-4">
+            <div className="max-w-6xl mx-auto flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Users size={18} className="text-blue-500" />
+                  <h1 className="text-lg font-bold text-gray-900">Personal & Behörigheter</h1>
                 <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{employees.length} st</span>
               </div>
             </div>
@@ -296,6 +297,32 @@ export default function MedarbetarePage() {
             <p className="mt-2 text-[10px] text-gray-400">Genom att byta roll eller slå på toggles sparas ändringarna direkt på servern.</p>
           </div>
 
+          {/* ── Flikar för Register vs Behörigheter ── */}
+          <div className="flex bg-ink/5 p-1 rounded-2xl w-full sm:w-[450px]">
+            <button
+              onClick={() => setActiveTab("register")}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                activeTab === "register"
+                  ? "bg-white text-ink shadow-sm"
+                  : "text-ink-soft/75 hover:text-ink"
+              }`}
+            >
+              <Users size={13} />
+              Medarbetarregister
+            </button>
+            <button
+              onClick={() => setActiveTab("permissions")}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                activeTab === "permissions"
+                  ? "bg-white text-ink shadow-sm"
+                  : "text-ink-soft/75 hover:text-ink"
+              }`}
+            >
+              <Shield size={13} />
+              Systemroller & Inloggning
+            </button>
+          </div>
+
           {/* Sök + filter */}
           <div className="flex flex-col md:flex-row gap-3">
             <div className="relative flex-1">
@@ -330,189 +357,248 @@ export default function MedarbetarePage() {
             <div className="text-center py-12 text-gray-400">Inga medarbetare hittades.</div>
           ) : (
             Object.entries(byGroup).sort().map(([grp, emps]) => (
-              <div key={grp} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+              <div key={grp} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden animate-fade-in">
                 <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
                   <span className="text-sm font-bold text-gray-800">{grp}</span>
                   <span className="text-xs text-gray-400 font-medium">{emps.length} person{emps.length !== 1 ? "er" : ""}</span>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse min-w-[700px]">
-                    <thead>
-                      <tr className="border-b border-gray-100 bg-gray-50/50 text-[10px] uppercase font-bold text-gray-400">
-                        <th className="py-3 px-5">Medarbetare</th>
-                        <th className="py-3 px-5">Kontrakt</th>
-                        <th className="py-3 px-5">Systemroll</th>
-                        <th className="py-3 px-5 text-center">Dagansvarig</th>
-                        <th className="py-3 px-5 text-center">Planerare</th>
-                        <th className="py-3 px-5">Inloggning</th>
-                        <th className="py-3 px-5 text-right">Åtgärder</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50 text-xs md:text-sm">
-                      {emps.map(emp => {
-                        const user = users.find(u => u.employee_id === emp.id);
-                        const status = saveStatus[emp.id];
-                        const roleConf = user ? ROLE_LABELS[user.role] : null;
-
-                        return (
-                          <tr key={emp.id} className="hover:bg-gray-50/40 transition-colors">
-                            {/* Namn & Kalenderlänk */}
-                            <td className="py-3.5 px-5">
-                              <Link
-                                href={`/personal/${emp.id}`}
-                                className="font-semibold text-gray-900 hover:text-terracotta hover:underline transition-colors flex items-center gap-1.5"
-                                title="Öppna personlig kalender"
-                              >
-                                <Calendar size={13} className="text-gray-400" />
-                                {emp.name}
-                              </Link>
-                              {user && (
-                                <p className="text-[10px] text-gray-400 font-mono mt-0.5">{user.username}</p>
-                              )}
-                            </td>
-
-                            {/* Kontrakt & % */}
-                            <td className="py-3.5 px-5 text-gray-600">
-                              <p className="font-medium">
-                                {CONTRACT_LABEL[emp.contract_type] ?? emp.contract_type}
-                              </p>
-                              <p className="text-[10px] text-gray-400">
-                                {emp.percentage ? `${Math.round(emp.percentage * 100)} %` : "100 %"}
-                              </p>
-                            </td>
-
-                            {/* Systemroll */}
-                            <td className="py-3.5 px-5">
-                              <div className="flex items-center gap-1.5">
-                                <select
-                                  value={user ? user.role : "none"}
-                                  onChange={e => handleSystemRoleChange(emp, user, e.target.value)}
-                                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-terracotta/40 bg-white font-medium text-gray-700 cursor-pointer"
+                  {activeTab === "register" ? (
+                    /* ════════ REGISTRET: KONTRAKT & EGENSKAPER ════════ */
+                    <table className="w-full text-left border-collapse min-w-[600px]">
+                      <thead>
+                        <tr className="border-b border-gray-100 bg-gray-50/50 text-[10px] uppercase font-bold text-gray-400">
+                          <th className="py-3 px-5">Medarbetare</th>
+                          <th className="py-3 px-5">Kontrakt & Tjänstegrad</th>
+                          <th className="py-3 px-5 text-center">Dagansvarig</th>
+                          <th className="py-3 px-5 text-center">Planerare</th>
+                          <th className="py-3 px-5 text-right">Åtgärder</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50 text-xs md:text-sm">
+                        {emps.map(emp => {
+                          const status = saveStatus[emp.id];
+                          return (
+                            <tr key={emp.id} className="hover:bg-gray-50/40 transition-colors">
+                              {/* Namn & Kalenderlänk */}
+                              <td className="py-3.5 px-5">
+                                <Link
+                                  href={`/personal/${emp.id}`}
+                                  className="font-semibold text-gray-900 hover:text-terracotta hover:underline transition-colors flex items-center gap-1.5"
+                                  title="Öppna personlig kalender"
                                 >
-                                  <option value="none">— Inget konto —</option>
-                                  <option value="personal">Personal</option>
-                                  <option value="schemaansvarig">Schemaansvarig</option>
-                                  <option value="superadmin">Superadmin</option>
-                                </select>
-                                {roleConf && (
-                                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full shrink-0 ${roleConf.bg} ${roleConf.text}`}>
-                                    {roleConf.label}
-                                  </span>
-                                )}
-                              </div>
-                            </td>
+                                  <Calendar size={13} className="text-gray-400" />
+                                  {emp.name}
+                                </Link>
+                              </td>
 
-                            {/* Dagansvarig */}
-                            <td className="py-3.5 px-5 text-center">
-                              {emp.contract_type === "kval" || emp.contract_type === "natt" ? (
-                                <div className="inline-block opacity-25 cursor-not-allowed" title="Kan ej tilldelas kvälls- eller nattkontrakt">
-                                  <ToggleLeft size={22} className="text-gray-300 mx-auto" />
-                                </div>
-                              ) : (
-                                <button
-                                  onClick={() => handleAttributeChange(emp.id, { is_dagansvarig: !emp.is_dagansvarig })}
-                                  className="inline-block cursor-pointer focus:outline-none"
-                                  title={emp.is_dagansvarig ? "Ta bort dagansvar" : "Gör till dagansvarig"}
-                                >
-                                  {emp.is_dagansvarig ? (
-                                    <ToggleRight size={22} className="text-terracotta mx-auto" />
-                                  ) : (
+                              {/* Kontrakt & % */}
+                              <td className="py-3.5 px-5 text-gray-600">
+                                <p className="font-medium">
+                                  {CONTRACT_LABEL[emp.contract_type] ?? emp.contract_type}
+                                </p>
+                                <p className="text-[10px] text-gray-400">
+                                  {emp.percentage ? `${Math.round(emp.percentage * 100)} %` : "100 %"}
+                                </p>
+                              </td>
+
+                              {/* Dagansvarig */}
+                              <td className="py-3.5 px-5 text-center">
+                                {emp.contract_type === "kval" || emp.contract_type === "natt" ? (
+                                  <div className="inline-block opacity-25 cursor-not-allowed" title="Kan ej tilldelas kvälls- eller nattkontrakt">
                                     <ToggleLeft size={22} className="text-gray-300 mx-auto" />
-                                  )}
-                                </button>
-                              )}
-                            </td>
-
-                            {/* Planerare */}
-                            <td className="py-3.5 px-5 text-center">
-                              {emp.contract_type === "vikarie" ? (
-                                <div className="inline-block opacity-25 cursor-not-allowed" title="Kan ej tilldelas vikarier">
-                                  <ToggleLeft size={22} className="text-gray-300 mx-auto" />
-                                </div>
-                              ) : (
-                                <button
-                                  onClick={() => handleAttributeChange(emp.id, { is_planerare: !emp.is_planerare })}
-                                  className="inline-block cursor-pointer focus:outline-none"
-                                  title={emp.is_planerare ? "Ta bort planeringsroll" : "Gör till planeringsansvarig"}
-                                >
-                                  {emp.is_planerare ? (
-                                    <ToggleRight size={22} className="text-terracotta mx-auto" />
-                                  ) : (
-                                    <ToggleLeft size={22} className="text-gray-300 mx-auto" />
-                                  )}
-                                </button>
-                              )}
-                            </td>
-
-                            {/* Inloggning / Länk */}
-                            <td className="py-3.5 px-5">
-                              {user ? (
-                                user.invite_accepted ? (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">
-                                    <span className="w-1 h-1 rounded-full bg-green-500 animate-pulse" />
-                                    Aktivt
-                                  </span>
+                                  </div>
                                 ) : (
                                   <button
-                                    onClick={() => handleCopyInvite(emp.id, user.id, emp.name)}
-                                    className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-lg border transition ${
-                                      copiedId === emp.id
-                                        ? "bg-green-600 border-green-600 text-white"
-                                        : "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
-                                    }`}
+                                    onClick={() => handleAttributeChange(emp.id, { is_dagansvarig: !emp.is_dagansvarig })}
+                                    className="inline-block cursor-pointer focus:outline-none"
+                                    title={emp.is_dagansvarig ? "Ta bort dagansvar" : "Gör till dagansvarig"}
                                   >
-                                    {copiedId === emp.id ? "Kopierad!" : "Kopiera länk"}
+                                    {emp.is_dagansvarig ? (
+                                      <ToggleRight size={22} className="text-terracotta mx-auto" />
+                                    ) : (
+                                      <ToggleLeft size={22} className="text-gray-300 mx-auto" />
+                                    )}
                                   </button>
-                                )
-                              ) : (
-                                <button
-                                  onClick={() => handleCreateUser(emp)}
-                                  className="flex items-center gap-1 text-[10px] font-semibold text-gray-500 bg-gray-50 border border-gray-200 hover:bg-gray-100 px-2.5 py-1 rounded-lg transition"
-                                >
-                                  Skapa inlogg
-                                </button>
-                              )}
-                            </td>
-
-                            {/* Åtgärder & Status */}
-                            <td className="py-3.5 px-5">
-                              <div className="flex items-center justify-end gap-1.5">
-                                {status === "saving" && <RefreshCw size={11} className="text-gray-400 animate-spin" />}
-                                {status === "saved" && (
-                                  <span className="text-[9px] font-bold text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded">
-                                    Sparat
-                                  </span>
                                 )}
-                                {status === "error" && (
-                                  <span className="text-[9px] font-bold text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">
-                                    Fel
-                                  </span>
+                              </td>
+
+                              {/* Planerare */}
+                              <td className="py-3.5 px-5 text-center">
+                                {emp.contract_type === "vikarie" ? (
+                                  <div className="inline-block opacity-25 cursor-not-allowed" title="Kan ej tilldelas vikarier">
+                                    <ToggleLeft size={22} className="text-gray-300 mx-auto" />
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => handleAttributeChange(emp.id, { is_planerare: !emp.is_planerare })}
+                                    className="inline-block cursor-pointer focus:outline-none"
+                                    title={emp.is_planerare ? "Ta bort planeringsroll" : "Gör till planeringsansvarig"}
+                                  >
+                                    {emp.is_planerare ? (
+                                      <ToggleRight size={22} className="text-terracotta mx-auto" />
+                                    ) : (
+                                      <ToggleLeft size={22} className="text-gray-300 mx-auto" />
+                                    )}
+                                  </button>
                                 )}
+                              </td>
 
-                                <div className="w-px h-3 bg-gray-200 mx-1" />
+                              {/* Åtgärder & Status */}
+                              <td className="py-3.5 px-5">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {status === "saving" && <RefreshCw size={11} className="text-gray-400 animate-spin" />}
+                                  {status === "saved" && (
+                                    <span className="text-[9px] font-bold text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded">
+                                      Sparat
+                                    </span>
+                                  )}
+                                  {status === "error" && (
+                                    <span className="text-[9px] font-bold text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">
+                                      Fel
+                                    </span>
+                                  )}
 
-                                <button
-                                  onClick={() => setModal(emp)}
-                                  className="p-1.5 text-gray-400 hover:text-terracotta hover:bg-terracotta/10 rounded-lg transition-colors cursor-pointer"
-                                  title="Redigera fullständig profil"
-                                >
-                                  <Pencil size={13} />
-                                </button>
-                                <button
-                                  onClick={() => setConfirmDelete(emp)}
-                                  disabled={deleting === emp.id}
-                                  className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Ta bort medarbetare"
-                                >
-                                  <Trash2 size={13} />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                                  <div className="w-px h-3 bg-gray-200 mx-1" />
+
+                                  <button
+                                    onClick={() => setModal(emp)}
+                                    className="p-1.5 text-gray-400 hover:text-terracotta hover:bg-terracotta/10 rounded-lg transition-colors cursor-pointer"
+                                    title="Redigera fullständig profil"
+                                  >
+                                    <Pencil size={13} />
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmDelete(emp)}
+                                    disabled={deleting === emp.id}
+                                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                    title="Ta bort medarbetare"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  ) : (
+                    /* ════════ ROLLER & KONTO: SYSTEMBEHÖRIGHETER ════════ */
+                    <table className="w-full text-left border-collapse min-w-[650px]">
+                      <thead>
+                        <tr className="border-b border-gray-100 bg-gray-50/50 text-[10px] uppercase font-bold text-gray-400">
+                          <th className="py-3 px-5">Medarbetare</th>
+                          <th className="py-3 px-5">Användarnamn</th>
+                          <th className="py-3 px-5">Systemroll (Behörighet)</th>
+                          <th className="py-3 px-5">Inloggningsstatus</th>
+                          <th className="py-3 px-5 text-right">Åtgärder</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50 text-xs md:text-sm">
+                        {emps.map(emp => {
+                          const user = users.find(u => u.employee_id === emp.id);
+                          const status = saveStatus[emp.id];
+                          const roleConf = user ? ROLE_LABELS[user.role] : null;
+
+                          return (
+                            <tr key={emp.id} className="hover:bg-gray-50/40 transition-colors">
+                              {/* Namn */}
+                              <td className="py-3.5 px-5 font-semibold text-gray-900">
+                                {emp.name}
+                              </td>
+
+                              {/* Användarnamn */}
+                              <td className="py-3.5 px-5 text-gray-500 font-mono">
+                                {user ? user.username : <span className="text-gray-300 italic">Ej skapat</span>}
+                              </td>
+
+                              {/* Systemroll dropdown & badge */}
+                              <td className="py-3.5 px-5">
+                                <div className="flex items-center gap-1.5">
+                                  <select
+                                    value={user ? user.role : "none"}
+                                    onChange={e => handleSystemRoleChange(emp, user, e.target.value)}
+                                    className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-terracotta/40 bg-white font-medium text-gray-700 cursor-pointer"
+                                  >
+                                    <option value="none">— Inget konto —</option>
+                                    <option value="personal">Personal</option>
+                                    <option value="schemaansvarig">Schemaansvarig</option>
+                                    <option value="superadmin">Superadmin</option>
+                                  </select>
+                                  {roleConf && (
+                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full shrink-0 ${roleConf.bg} ${roleConf.text}`}>
+                                      {roleConf.label}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* Inloggning / Länk */}
+                              <td className="py-3.5 px-5">
+                                {user ? (
+                                  user.invite_accepted ? (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">
+                                      <span className="w-1 h-1 rounded-full bg-green-500 animate-pulse" />
+                                      Aktivt
+                                    </span>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleCopyInvite(emp.id, user.id, emp.name)}
+                                      className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-lg border transition cursor-pointer ${
+                                        copiedId === emp.id
+                                          ? "bg-green-600 border-green-600 text-white"
+                                          : "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                                      }`}
+                                    >
+                                      {copiedId === emp.id ? "Kopierad!" : "Kopiera länk"}
+                                    </button>
+                                  )
+                                ) : (
+                                  <button
+                                    onClick={() => handleCreateUser(emp)}
+                                    className="flex items-center gap-1 text-[10px] font-semibold text-gray-500 bg-gray-50 border border-gray-200 hover:bg-gray-100 px-2.5 py-1 rounded-lg transition cursor-pointer"
+                                  >
+                                    Skapa inlogg
+                                  </button>
+                                )}
+                              </td>
+
+                              {/* Åtgärder & Status */}
+                              <td className="py-3.5 px-5">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {status === "saving" && <RefreshCw size={11} className="text-gray-400 animate-spin" />}
+                                  {status === "saved" && (
+                                    <span className="text-[9px] font-bold text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded">
+                                      Sparat
+                                    </span>
+                                  )}
+                                  {status === "error" && (
+                                    <span className="text-[9px] font-bold text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">
+                                      Fel
+                                    </span>
+                                  )}
+
+                                  {user && (
+                                    <>
+                                      <div className="w-px h-3 bg-gray-200 mx-1" />
+                                      <button
+                                        onClick={() => setConfirmDeleteUser({ empName: emp.name, userId: user.id, empId: emp.id })}
+                                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                        title="Ta bort användarkonto"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               </div>
             ))
@@ -607,6 +693,7 @@ export default function MedarbetarePage() {
           </div>
         )}
       </div>
+      </AdminLayout>
     </AuthGuard>
   );
 }

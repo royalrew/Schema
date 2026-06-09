@@ -4,6 +4,7 @@ import { ShiftConfigEditor } from "@/components/ShiftConfigEditor";
 import { BillingConfigEditor } from "@/components/BillingConfigEditor";
 import { fetchShiftConfigs, type ShiftConfig } from "@/lib/api";
 import { AuthGuard } from "@/components/AuthGuard";
+import { AdminLayout } from "@/components/AdminLayout";
 import Link from "next/link";
 import { Clock, CreditCard } from "lucide-react";
 
@@ -21,19 +22,19 @@ export default function InstallningarPage() {
 
   return (
     <AuthGuard requiredRole="admin">
-      <div className="min-h-screen bg-paper p-6">
-        <div className="max-w-2xl mx-auto space-y-6">
-          
-          {/* Unified Header */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Inställningar</h1>
-              <p className="text-sm text-gray-500 mt-1">
-                Administrera systeminställningar, passtider och faktureringsinformation för er organisation.
-              </p>
+      <AdminLayout>
+        <div className="min-h-screen bg-paper p-6">
+          <div className="max-w-2xl mx-auto space-y-6">
+            
+            {/* Unified Header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Inställningar</h1>
+                <p className="text-sm text-gray-500 mt-1">
+                  Administrera systeminställningar, passtider och faktureringsinformation för er organisation.
+                </p>
+              </div>
             </div>
-            <Link href="/" className="text-sm text-terracotta hover:underline">← Tillbaka</Link>
-          </div>
 
           {/* Tab Switcher */}
           <div className="flex border-b border-gray-200">
@@ -78,6 +79,7 @@ export default function InstallningarPage() {
 
         </div>
       </div>
+      </AdminLayout>
     </AuthGuard>
   );
 }

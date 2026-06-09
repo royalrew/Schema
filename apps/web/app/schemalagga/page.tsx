@@ -5,6 +5,7 @@ import { Save, Check, ClipboardList, Calendar, Settings, AlertCircle, RefreshCw,
 import { fetchStaffingTemplate, saveStaffingTemplate, fetchGroups, fetchStaffing, saveStaffing } from "@/lib/api";
 import type { DayKrav } from "@/lib/api";
 import { AuthGuard } from "@/components/AuthGuard";
+import { AdminLayout } from "@/components/AdminLayout";
 import { getDaysInMonth, format } from "date-fns";
 import { sv } from "date-fns/locale";
 import type { Bemanningskrav, HourlyRequirement } from "@/lib/types";
@@ -218,20 +219,17 @@ export default function SchemalaggarePage() {
 
   return (
     <AuthGuard requiredRole="admin">
-      <div className="min-h-screen bg-paper text-ink pb-16">
-        {/* ── Top Bar ── */}
-        <div className="bg-white/70 backdrop-blur-sm border-b border-ink/8 px-6 py-4 sticky top-0 z-40">
-          <div className="max-w-4xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Link href="/dashboard" className="text-sm font-semibold text-ink-soft hover:text-ink transition-colors">
-                ← Översikt
-              </Link>
-              <div className="w-px h-4 bg-ink/10" />
-              <div className="flex items-center gap-2">
-                <ClipboardList size={18} className="text-terracotta" />
-                <h1 className="text-base font-bold text-ink">Bemanningskrav</h1>
+      <AdminLayout>
+        <div className="min-h-screen bg-paper text-ink pb-16">
+          {/* ── Top Bar ── */}
+          <div className="bg-white/70 backdrop-blur-sm border-b border-ink/8 px-6 py-4 sticky top-0 z-40">
+            <div className="max-w-4xl mx-auto flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <ClipboardList size={18} className="text-terracotta" />
+                  <h1 className="text-base font-bold text-ink">Bemanningskrav</h1>
+                </div>
               </div>
-            </div>
             
             <div className="flex items-center gap-2">
               <button
@@ -674,6 +672,7 @@ export default function SchemalaggarePage() {
           )}
         </div>
       </div>
+      </AdminLayout>
     </AuthGuard>
   );
 }

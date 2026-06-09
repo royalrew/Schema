@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { AuthGuard } from "@/components/AuthGuard";
+import { AdminLayout } from "@/components/AdminLayout";
 import { fetchRagDocuments, uploadRagDocument, toggleAttestRagDocument, deleteRagDocument, type RagDocument } from "@/lib/api";
 
 export default function RagAdminPage() {
@@ -141,16 +142,13 @@ export default function RagAdminPage() {
 
   return (
     <AuthGuard requiredRole="admin">
-      <div className="min-h-screen bg-slate-50/50 dark:bg-slate-950/20 font-sans">
-        
-        {/* Header */}
-        <div className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 px-6 py-4">
-          <div className="max-w-5xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Link href="/" className="text-gray-400 hover:text-gray-600 text-sm">
-                ← Tillbaka
-              </Link>
-              <div className="w-px h-4 bg-gray-200 dark:bg-slate-850" />
+      <AdminLayout>
+        <div className="min-h-screen bg-slate-50/50 dark:bg-slate-950/20 font-sans">
+          
+          {/* Header */}
+          <div className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 px-6 py-4">
+            <div className="max-w-5xl mx-auto flex items-center justify-between">
+              <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
                 <BookOpen size={18} className="text-[#D95D39]" />
                 <h1 className="text-lg font-bold text-gray-900 dark:text-slate-100">
@@ -449,6 +447,7 @@ export default function RagAdminPage() {
         )}
 
       </div>
+      </AdminLayout>
     </AuthGuard>
   );
 }
