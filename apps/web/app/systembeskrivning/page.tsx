@@ -201,8 +201,19 @@ const SPECIFICATIONS: SpecItem[] = [
     desc: "Efter att önskemål och bemanningskrav har schemalagts räknar generatorn ut hur många timmar varje person har schemalagts. Om de har ett timunderskott (under sitt måltimstal), fyller systemet automatiskt på med 'OBOKAD' tid.",
     bullets: [
       "OBOKAD tid läggs ut på personens lediga och tillåtna dagar.",
-      "Standardstorleken på ett fyllnadspass är 8.0 timmar (eller mindre om det är det sista som behövs för att nå målet).",
+      "Ett obokad-pass är som mest 8 timmar och 30 minuter (07:00–15:30), eller kortare om det är det sista som behövs för att nå målet.",
       "Detta säkerställer att alla medarbetare alltid når exakt sitt kontrakterade sysselsättningsmål per schemaperiod."
+    ]
+  },
+
+  {
+    id: "hours-obokad-length",
+    category: "hours",
+    title: "Ett obokad-pass är max 8 timmar och 30 minuter per dag",
+    desc: "Ett enskilt obokad-pass läggs ut som längst 8 h 30 min på en dag (07:00–15:30). Behöver en person fler timmar fördelas de på flera lediga dagar — aldrig som ett orimligt långt pass på en och samma dag.",
+    bullets: [
+      "Exempel: en person som saknar 24 timmar får inte ett 24-timmarspass, utan t.ex. tre obokad-pass på olika dagar.",
+      "Fråga till Sara: Stämmer det att 8 h 30 min är rätt maxlängd för ett obokad-pass hos er, eller ska det vara något annat (t.ex. 8 h)?"
     ]
   },
 
