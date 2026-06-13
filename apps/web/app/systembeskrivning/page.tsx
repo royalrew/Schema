@@ -366,7 +366,7 @@ export default function SystembeskrivningPage() {
   return (
     <AuthGuard requiredRole="superadmin">
       <AdminLayout>
-        <div className="bg-paper min-h-screen text-ink pb-24 relative overflow-hidden w-full">
+        <div className="bg-paper min-h-screen text-ink pb-24 relative overflow-x-hidden w-full">
           {/* Background decorations */}
           <div className="absolute top-0 right-0 w-[400px] h-[400px] rounded-full bg-amber/10 blur-3xl pointer-events-none" />
           <div className="absolute bottom-20 -left-20 w-[500px] h-[500px] rounded-full bg-sage/10 blur-3xl pointer-events-none" />
