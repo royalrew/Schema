@@ -8,21 +8,26 @@ import type { Employee, ScheduleDay } from "@/lib/types";
 
 interface Props {
   params: Promise<{ group: string }>;
+  searchParams: Promise<{ year?: string; month?: string }>;
 }
 
-export default function SchemaPage({ params }: Props) {
+export default function SchemaPage({ params, searchParams }: Props) {
   const { group } = use(params);
+  const search = use(searchParams);
   const decodedGroup = decodeURIComponent(group);
+
+  const now = new Date();
+  const defaultYear = now.getFullYear();
+  const defaultMonth = now.getMonth() + 1;
+
+  const year = search.year ? parseInt(search.year, 10) : defaultYear;
+  const month = search.month ? parseInt(search.month, 10) : defaultMonth;
 
   const [loading, setLoading] = useState(true);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [schedule, setSchedule] = useState<ScheduleDay[]>([]);
 
   useEffect(() => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-
     async function load() {
       try {
         const [all, sched] = await Promise.all([
@@ -38,11 +43,7 @@ export default function SchemaPage({ params }: Props) {
       }
     }
     load();
-  }, [decodedGroup]);
-
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
+  }, [decodedGroup, year, month]);
 
   return (
     <AuthGuard requiredRole="admin">

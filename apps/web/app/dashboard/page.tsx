@@ -249,7 +249,7 @@ export default function Dashboard() {
               return (
                 <Link
                   key={g.group}
-                  href={`/schema?group=${encodeURIComponent(g.group)}&year=${year}&month=${month}`}
+                  href={`/schema/${encodeURIComponent(g.group)}?year=${year}&month=${month}`}
                   className="bg-white/60 backdrop-blur-md border border-ink/8 rounded-3xl p-5 hover:shadow-lg hover:border-ink/15 transition-all flex flex-col justify-between group"
                 >
                   <div className="space-y-3">
