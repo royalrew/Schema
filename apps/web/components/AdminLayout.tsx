@@ -9,6 +9,7 @@ import {
   BookOpen, 
   Settings, 
   Scale, 
+  HeartHandshake,
   LogOut, 
   Shield, 
   ChevronLeft, 
@@ -65,6 +66,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     { label: "Översikt", href: "/dashboard", icon: LayoutDashboard },
     { label: "Bemanningskrav", href: "/schemalagga", icon: ClipboardList },
     { label: "Personal & Behörigheter", href: "/medarbetare", icon: Users },
+    { label: "Livssituationer", href: "/livssituationer", icon: HeartHandshake },
     { label: "RAG & Kunskap", href: "/rag", icon: BookOpen },
     { label: "Passtider & Mallar", href: "/installningar", icon: Settings },
   ];

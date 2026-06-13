@@ -2,7 +2,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { format, getDaysInMonth, getDay } from "date-fns";
 import { sv } from "date-fns/locale";
-import { Loader2, Play, ChevronLeft, ChevronRight, LayoutGrid, Calendar, Settings, Printer, FileSpreadsheet, Users, ClipboardList, Trash2, Clock, AlertTriangle } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, LayoutGrid, Calendar, Settings, Printer, FileSpreadsheet, Users, ClipboardList, Trash2, Clock, AlertTriangle, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { DayCell } from "./DayCell";
 import { CalendarView } from "./CalendarView";
@@ -12,12 +12,11 @@ import { ValidationPanel } from "./ValidationPanel";
 import { PhaseBar } from "./PhaseBar";
 import { AIModal } from "./AIModal";
 import { BeslutsloggPanel } from "./BeslutsloggPanel";
-import { generateSchedule, fetchEmployees, fetchSchedule, fetchPeriodInfo, fetchValidation, advancePhase, updateWishes, setApt, setWishDeadline, fetchShiftConfigs, updateScheduleDay, clearSchedule, type UpdateScheduleDayData } from "@/lib/api";
+import { generateSchedule, fetchEmployees, fetchGroups, fetchSchedule, fetchPeriodInfo, fetchValidation, advancePhase, updateWishes, setApt, setWishDeadline, fetchShiftConfigs, updateScheduleDay, clearSchedule, fetchFixPlan, applyFixPlan, type UpdateScheduleDayData } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 import { ScheduleDayEditor, type ShiftPreset } from "./ScheduleDayEditor";
 import type { Employee, ScheduleDay, ValidationResult, ValidationError, Phase } from "@/lib/types";
 
-const GROUPS = ["Norra", "Södra", "Östra", "Centrum 1", "Centrum 2", "Centrum 3", "Moholm", "Natten"];
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:9000";
 
 const CONTRACT_LABEL: Record<string, string> = {
@@ -39,6 +38,7 @@ interface Props {
 
 export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: initGroup, year: initYear, month: initMonth }: Props) {
   const [group, setGroup] = useState(initGroup);
+  const [groups, setGroups] = useState<string[]>([initGroup]);
   const [year, setYear] = useState(initYear);
   const [month, setMonth] = useState(initMonth);
   const [employees, setEmployees] = useState<Employee[]>(allEmployees);
@@ -54,10 +54,17 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"calendar" | "grid">("calendar");
   const [decisions, setDecisions] = useState<string[]>([]);
+  const [aiSolveSummary, setAiSolveSummary] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"schema" | "timsaldo" | "validering" | "logg">("schema");
   const token = getToken() ?? "";
   const [editingCell, setEditingCell] = useState<{ empId: string; dateStr: string; day: ScheduleDay | null } | null>(null);
   const [presets, setPresets] = useState<ShiftPreset[]>([]);
+
+  useEffect(() => {
+    fetchGroups()
+      .then((items) => setGroups(items.length > 0 ? items : [initGroup]))
+      .catch(() => setGroups([initGroup]));
+  }, [initGroup]);
 
   // Hämta passtider för gruppen
   useEffect(() => {
@@ -201,6 +208,7 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
   const handleGenerate = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setAiSolveSummary(null);
     try {
       const result = await generateSchedule(group, year, month);
       setSchedule(result.schedule_days);
@@ -208,6 +216,26 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
       setStats(result.stats);
       setPhase(result.phase);
       setDecisions(result.decisions ?? []);
+
+      const plan = await fetchFixPlan(group, year, month).catch(() => null);
+      if (plan && plan.steps.length > 0 && plan.new_hard_errors === 0) {
+        const applied = await applyFixPlan(group, year, month, plan.steps);
+        const [sched, v, periodInfo] = await Promise.all([
+          fetchSchedule(group, year, month).catch(() => result.schedule_days),
+          fetchValidation(group, year, month).catch(() => result.validation),
+          fetchPeriodInfo(group, year, month).catch(() => null),
+        ]);
+        setSchedule(sched);
+        setValidation(v);
+        if (periodInfo) setDecisions(periodInfo.decisions ?? []);
+        setAiSolveSummary(
+          `AI löste schemat automatiskt: ${applied.applied_count} åtgärder genomförda, ${applied.warnings_after} varningar kvar, ${applied.hard_errors_after} hårda fel.`
+        );
+      } else if (plan && plan.steps.length > 0 && plan.new_hard_errors > 0) {
+        setAiSolveSummary("AI hittade åtgärder men stoppade dem eftersom planen skulle skapa hårda regelbrott.");
+      } else {
+        setAiSolveSummary("AI kontrollerade schemat. Inga automatiska åtgärder behövdes.");
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Okänt fel");
     } finally {
@@ -278,7 +306,7 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
 
           {/* Group selector */}
           <div className="flex gap-1 flex-wrap">
-            {GROUPS.map(g => (
+            {groups.map(g => (
               <button
                 key={g}
                 onClick={() => { setGroup(g); setSchedule([]); setValidation(null); }}
@@ -447,12 +475,21 @@ export function ScheduleGrid({ employees: allEmployees, initialSchedule, group: 
           <button
             onClick={handleGenerate}
             disabled={loading}
-            className="flex items-center gap-2 bg-terracotta hover:bg-clay disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-md shadow-terracotta/10 cursor-pointer"
+            className="flex items-center gap-2 bg-linear-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-md shadow-purple-600/10 cursor-pointer"
           >
-            {loading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-            Kör autoschema
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+            Lös schema med AI
           </button>
         </div>
+
+        {aiSolveSummary && (
+          <div className="mt-3 pt-3 border-t border-ink/5">
+            <div className="inline-flex items-center gap-2 rounded-xl bg-purple-50 border border-purple-100 px-3 py-2 text-xs font-semibold text-purple-900">
+              <Sparkles size={14} className="text-purple-600" />
+              {aiSolveSummary}
+            </div>
+          </div>
+        )}
 
         {/* Stats bar */}
         {stats && (

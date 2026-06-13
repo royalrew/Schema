@@ -12,6 +12,7 @@ import { DagValjare, type ShiftPreset } from "./DagValjare";
 import { Personkort } from "./Personkort";
 import { FranvaroManager } from "./FranvaroManager";
 import { WelcomeGuide } from "./WelcomeGuide";
+import { ScheduleExplanation } from "./ScheduleExplanation";
 import type { Employee, ScheduleDay, Phase } from "@/lib/types";
 
 const DAY_SHORT = ["Mån", "Tis", "Ons", "Tor", "Fre", "Lör", "Sön"];
@@ -74,6 +75,7 @@ export function PersonalCalendar({
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const [presets, setPresets] = useState<ShiftPreset[]>([]);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [decisions, setDecisions] = useState<string[]>([]);
 
   function handleLogout() {
     clearToken();
@@ -91,6 +93,13 @@ export function PersonalCalendar({
       })));
     }).catch(() => {});
   }, [emp.group]);
+
+  // Hämta beslutsloggen för perioden — underlag för "Varför ser ditt schema ut så här?"
+  useEffect(() => {
+    fetchPeriodInfo(emp.group, year, month)
+      .then(info => setDecisions(info.decisions ?? []))
+      .catch(() => setDecisions([]));
+  }, [emp.group, year, month]);
 
   const wishes = new Set<string>(emp.wishes as unknown as string[]);
 
@@ -524,6 +533,11 @@ export function PersonalCalendar({
 
           </div>{/* slut höger */}
         </div>{/* slut flex */}
+
+        {/* ── Varför ser ditt schema ut så här? (transparenslager) ── */}
+        {phase !== "wish" && (
+          <ScheduleExplanation employee={emp} schedule={schedule} decisions={decisions} />
+        )}
       </div>
       {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
     </div>

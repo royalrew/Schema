@@ -1,4 +1,4 @@
-import type { Employee, ScheduleDay, GenerateResponse, PeriodInfo, Phase, Bemanningskrav, HourlyRequirement, ValidationResult, FixPlan, FixStep, ApplyPlanResult } from "./types";
+import type { Employee, ScheduleDay, GenerateResponse, PeriodInfo, Phase, Bemanningskrav, HourlyRequirement, ValidationResult, FixPlan, FixStep, ApplyPlanResult, ScenarioResult, WishReport, StaffingReport, FairnessReport } from "./types";
 import { getToken, clearToken } from "./auth";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:9000";
@@ -310,6 +310,74 @@ export async function applyFixPlan(
   return res.json();
 }
 
+export async function fetchScenarioAnalysis(input: {
+  group: string;
+  year: number;
+  month: number;
+  employee_id: string;
+  date: string;
+  desired_shift: string;
+}): Promise<ScenarioResult> {
+  const res = await apiFetch(`${BASE}/api/ai/scenario`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail ?? "Kunde inte simulera scenariot");
+  }
+  return res.json();
+}
+
+export async function fetchWishReport(input: {
+  year: number;
+  month: number;
+  group: string | null;
+}): Promise<WishReport> {
+  const res = await apiFetch(`${BASE}/api/ai/wish-report`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail ?? "Kunde inte hämta önskemålsrapport");
+  }
+  return res.json();
+}
+
+export async function fetchStaffingReport(input: {
+  year: number;
+  month: number;
+  group: string | null;
+}): Promise<StaffingReport> {
+  const res = await apiFetch(`${BASE}/api/ai/staffing-report`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail ?? "Kunde inte hämta bemanningsrapport");
+  }
+  return res.json();
+}
+
+export async function fetchFairnessReport(input: {
+  year: number;
+  month: number;
+  group: string | null;
+  agent?: string;
+}): Promise<FairnessReport> {
+  const res = await apiFetch(`${BASE}/api/ai/fairness-report`, {
+    method: "POST",
+    body: JSON.stringify({ agent: "rattviseagent_0645", ...input }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail ?? "Kunde inte hämta rättviserapport");
+  }
+  return res.json();
+}
+
 export async function setWishDeadline(
   group: string, year: number, month: number,
   wishDeadline: string | null,
@@ -591,6 +659,3 @@ export async function updateScheduleDay(
   }
   return res.json();
 }
-
-
-

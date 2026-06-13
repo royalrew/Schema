@@ -28,6 +28,7 @@ import {
   updateUserRole,
   deleteUser,
   fetchSuggestUsername,
+  fetchGroups,
   type UserOut
 } from "@/lib/api";
 import { MedarbetareModal } from "@/components/MedarbetareModal";
@@ -43,8 +44,6 @@ const CONTRACT_LABEL: Record<string, string> = {
   natt:         "Natt",
   vikarie:      "Vikarie",
 };
-
-const GROUPS = ["Alla", "Norra", "Södra", "Östra", "Centrum 1", "Centrum 2", "Centrum 3", "Moholm", "Natten"];
 
 const ROLE_LABELS: Record<string, { label: string; bg: string; text: string }> = {
   superadmin:      { label: "Superadmin",      bg: "bg-terracotta/15", text: "text-terracotta" },
@@ -64,6 +63,7 @@ export default function MedarbetarePage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [inviteStatus, setInviteStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [groups, setGroups] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [groupFilter, setGroupFilter] = useState("Alla");
   const [modal, setModal] = useState<"add" | Employee | null>(null);
@@ -78,12 +78,14 @@ export default function MedarbetarePage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [all, usrs] = await Promise.all([
+      const [all, usrs, groupList] = await Promise.all([
         fetchEmployees(""),
         fetchUsers().catch(() => []),
+        fetchGroups().catch(() => []),
       ]);
       setEmployees(all);
       setUsers(usrs);
+      setGroups(groupList);
     } catch {
       // Tyst fel
     } finally {
@@ -336,7 +338,7 @@ export default function MedarbetarePage() {
               />
             </div>
             <div className="flex gap-1 flex-wrap">
-              {GROUPS.map(g => (
+              {["Alla", ...groups].map(g => (
                 <button
                   key={g}
                   onClick={() => setGroupFilter(g)}
@@ -610,6 +612,7 @@ export default function MedarbetarePage() {
           <MedarbetareModal
             employee={modal}
             user={users.find(u => u.employee_id === modal.id)}
+            groups={groups}
             onSave={(updated, inviteUrl, inviteName) => {
               setEmployees(prev => prev.map(e => e.id === updated.id ? updated : e));
               if (inviteUrl) {
@@ -626,6 +629,7 @@ export default function MedarbetarePage() {
         {modal === "add" && (
           <MedarbetareModal
             employee={null}
+            groups={groups}
             onSave={(added, inviteUrl, inviteName) => {
               setEmployees(prev => [...prev, added]);
               if (inviteUrl) {

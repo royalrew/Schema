@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X, Save } from "lucide-react";
 import {
   saveEmployee,
@@ -11,8 +11,6 @@ import {
   type UserOut
 } from "@/lib/api";
 import type { Employee } from "@/lib/types";
-
-const GROUPS = ["Norra", "Södra", "Östra", "Centrum 1", "Centrum 2", "Centrum 3", "Moholm", "Natten"];
 
 const CONTRACT_TYPES = [
   { value: "varierande",   label: "Varierande (37h/v)" },
@@ -26,6 +24,7 @@ const CONTRACT_TYPES = [
 interface Props {
   employee?: Employee | null;  // null = ny medarbetare
   user?: UserOut | null;       // matchande användare
+  groups: string[];
   onSave: (emp: Employee, inviteUrl?: string | null, inviteName?: string | null) => void;
   onClose: () => void;
 }
@@ -46,10 +45,10 @@ function generateId(): string {
  * @param props.onClose - Callback triggered to close the modal.
  * @returns The rendered MedarbetareModal component.
  */
-export function MedarbetareModal({ employee, user, onSave, onClose }: Props) {
+export function MedarbetareModal({ employee, user, groups, onSave, onClose }: Props) {
   const isNew = !employee;
   const [name, setName] = useState(employee?.name ?? "");
-  const [group, setGroup] = useState(employee?.group ?? "Norra");
+  const [group, setGroup] = useState(employee?.group ?? groups[0] ?? "");
   const [contractType, setContractType] = useState(employee?.contract_type ?? "varierande");
   const [isDagansvarig, setIsDagansvarig] = useState(employee?.is_dagansvarig ?? false);
   const [isPlanerare, setIsPlanerare] = useState(employee?.is_planerare ?? false);
@@ -62,8 +61,13 @@ export function MedarbetareModal({ employee, user, onSave, onClose }: Props) {
 
   const isDagansvarigDisabled = contractType === "kval" || contractType === "natt";
 
+  useEffect(() => {
+    if (!group && groups.length > 0) setGroup(groups[0]);
+  }, [group, groups]);
+
   async function handleSave() {
     if (!name.trim()) { setError("Namn krävs"); return; }
+    if (!group) { setError("Grupp krävs"); return; }
     setSaving(true);
     setError(null);
     try {
@@ -152,7 +156,8 @@ export function MedarbetareModal({ employee, user, onSave, onClose }: Props) {
                 onChange={e => setGroup(e.target.value as Employee["group"])}
                 className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/40 bg-white"
               >
-                {GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
+                {groups.length === 0 && <option value="">Ingen grupp hittad</option>}
+                {groups.map(g => <option key={g} value={g}>{g}</option>)}
               </select>
             </div>
 

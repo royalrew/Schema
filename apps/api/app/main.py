@@ -17,6 +17,8 @@ from app.routers import chat as chat_router
 from app.routers import rag as rag_router
 from app.routers import demo as demo_router
 from app.routers import organization as org_router
+from app.routers import generate_all as generate_all_router
+from app.routers import swarm as swarm_router
 
 
 async def cleanup_old_demo_data():
@@ -227,6 +229,8 @@ app.include_router(chat_router.router)
 app.include_router(rag_router.router)
 app.include_router(demo_router.router)
 app.include_router(org_router.router)
+app.include_router(generate_all_router.router)
+app.include_router(swarm_router.router)
 
 
 

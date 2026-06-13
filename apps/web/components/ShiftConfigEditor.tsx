@@ -4,8 +4,6 @@ import { Check, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { saveShiftConfigs, fetchShiftConfigs, type ShiftConfig } from "@/lib/api";
 
-const GROUPS = ["Norra", "Södra", "Östra", "Centrum 1", "Centrum 2", "Centrum 3", "Moholm", "Natten"];
-
 const SHIFT_LABELS: Record<string, string> = {
   dag_tidig: "Dag tidig (06:45-regeln)",
   dag:       "Dag",
@@ -16,10 +14,11 @@ const SHIFT_LABELS: Record<string, string> = {
 
 interface Props {
   initialConfigs: ShiftConfig[];
+  groups: string[];
 }
 
-export function ShiftConfigEditor({ initialConfigs }: Props) {
-  const [selectedGroup, setSelectedGroup] = useState<string>("Norra");
+export function ShiftConfigEditor({ initialConfigs, groups }: Props) {
+  const [selectedGroup, setSelectedGroup] = useState<string>(groups[0] ?? "");
   const [configs, setConfigs] = useState<ShiftConfig[]>(initialConfigs);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -68,7 +67,7 @@ export function ShiftConfigEditor({ initialConfigs }: Props) {
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Redigera tider för</p>
         <div className="flex flex-wrap gap-2">
-          {GROUPS.map(g => (
+          {groups.map(g => (
             <button
               key={g}
               onClick={() => loadGroup(g)}

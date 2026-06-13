@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
 import { sv } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, LogOut, Users, Settings, ClipboardList, AlertTriangle, CheckCircle2, Clock, Plus, Shield, BookOpen, Scale } from "lucide-react";
+import { ChevronLeft, ChevronRight, LogOut, Users, Settings, ClipboardList, AlertTriangle, CheckCircle2, Clock, Plus, Shield, BookOpen, Scale, HeartHandshake, Sparkles, ListChecks } from "lucide-react";
 import { getUser, clearToken, isLoggedIn, getToken } from "@/lib/auth";
 import { WelcomeGuide } from "@/components/WelcomeGuide";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -19,6 +19,10 @@ interface GroupStatus {
   employee_count: number;
   hard_errors: number;
   coverage_warnings: number;
+}
+
+interface LifeSituationDashboardItem {
+  status?: string;
 }
 
 const PHASE_CONFIG = {
@@ -36,10 +40,22 @@ export default function Dashboard() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [groups, setGroups] = useState<string[]>([]);
   const [statuses, setStatuses] = useState<GroupStatus[]>([]);
+  const [lifeSituationStats, setLifeSituationStats] = useState({ total: 0, active: 0, draft: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setUser(getUser());
+    try {
+      const raw = localStorage.getItem("sintari_life_situations");
+      const items: LifeSituationDashboardItem[] = raw ? JSON.parse(raw) : [];
+      setLifeSituationStats({
+        total: items.length,
+        active: items.filter((item) => item.status === "active").length,
+        draft: items.filter((item) => item.status === "draft").length,
+      });
+    } catch {
+      setLifeSituationStats({ total: 0, active: 0, draft: 0 });
+    }
     setMounted(true);
   }, []);
 
@@ -147,23 +163,76 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ── Systembeskrivning Banner ── */}
+        {/* ── Systemguide & genomgång (kompakt) ── */}
         {user?.role === "superadmin" && (
-          <div className="bg-white/60 backdrop-blur-md border border-ink/8 rounded-2xl p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-            <div className="space-y-1">
-              <h2 className="text-sm font-bold text-ink flex items-center gap-2">
-                <Scale size={16} className="text-terracotta" />
-                Sintari Systemguide & Regelspecifikation
-              </h2>
-              <p className="text-xs text-ink-soft leading-relaxed max-w-xl">
-                Sammanställning av allt vi har byggt, timräkning för heltid och deltid, samt de hårda lagreglerna (dygnsvila, veckovila) och de mjuka verksamhetsreglerna (önskemålskrockar, dagsansvarig, planerare). Visa denna sida för Sara under er genomgång.
-              </p>
+          <div className="bg-white/60 backdrop-blur-md border border-ink/8 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <h2 className="text-sm font-bold text-ink flex items-center gap-2">
+              <Scale size={16} className="text-terracotta" />
+              Systemguide & regelgenomgång
+            </h2>
+            <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+              <Link
+                href="/systembeskrivning"
+                className="bg-white border border-ink/10 hover:bg-ink/5 text-ink px-4 py-2 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-2"
+              >
+                <BookOpen size={14} />
+                Öppna systemguide
+              </Link>
+              <Link
+                href="/installningar?tab=genomgang"
+                className="bg-terracotta hover:bg-clay text-white px-4 py-2 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-2"
+              >
+                <ListChecks size={14} />
+                Gå till Sara-genomgång
+              </Link>
             </div>
-            <Link href="/systembeskrivning" className="w-full md:w-auto bg-terracotta hover:bg-clay text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md shadow-terracotta/10 flex items-center justify-center gap-2 shrink-0">
-              Öppna systemguide
-            </Link>
           </div>
         )}
+
+        {/* ── Livssituationer / AI-lager ── */}
+        <div className="grid md:grid-cols-[1fr_280px] gap-4">
+          <Link
+            href="/livssituationer"
+            className="bg-white/70 backdrop-blur-md border border-ink/8 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-terracotta/30 hover:shadow-md transition-all"
+          >
+            <div className="space-y-1">
+              <h2 className="text-sm font-bold text-ink flex items-center gap-2">
+                <HeartHandshake size={16} className="text-terracotta" />
+                Livssituationer
+              </h2>
+              <p className="text-xs text-ink-soft leading-relaxed max-w-2xl">
+                Samla mänskliga hänsyn som rehab, familjelogistik, introduktion och tillfälliga begränsningar. AI gör dem begripliga, regelmotorn avgör vad som håller.
+              </p>
+            </div>
+            <span className="shrink-0 bg-terracotta text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2">
+              <Sparkles size={14} />
+              Öppna AI-lagret
+            </span>
+          </Link>
+
+          <div className="bg-white border border-ink/8 rounded-2xl p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-ink">AI-granskning</span>
+              <span className="text-[10px] font-bold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
+                Motor först
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div>
+                <div className="text-xl font-bold text-ink">{lifeSituationStats.total}</div>
+                <div className="text-[10px] text-ink-soft">totalt</div>
+              </div>
+              <div>
+                <div className="text-xl font-bold text-green-700">{lifeSituationStats.active}</div>
+                <div className="text-[10px] text-ink-soft">aktiva</div>
+              </div>
+              <div>
+                <div className="text-xl font-bold text-amber-700">{lifeSituationStats.draft}</div>
+                <div className="text-[10px] text-ink-soft">nya</div>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* ── Gruppceller ── */}
         {loading ? (

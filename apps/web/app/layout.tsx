@@ -34,6 +34,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="sv" className={`${inter.variable} ${fraunces.variable} ${mono.variable}`}>
+      <head>
+        {/* Explicit teckenkodning — säkerställer att åäö renderas rätt (UTF-8) */}
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+      </head>
       <body>
         {children}
         <CookieBanner />

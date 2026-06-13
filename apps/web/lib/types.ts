@@ -20,15 +20,7 @@ export type ShiftType =
 
 export type AbsenceType = "sem" | "FL" | "TJL" | "sjuk" | "VAB" | "KOM" | "STU";
 
-export type Group =
-  | "Norra"
-  | "Södra"
-  | "Östra"
-  | "Centrum 1"
-  | "Centrum 2"
-  | "Centrum 3"
-  | "Moholm"
-  | "Natten";
+export type Group = string;
 
 export interface ShiftSegment {
   start_time: string; // ISO datetime
@@ -148,6 +140,117 @@ export interface ApplyPlanResult {
   applied_count: number;
   warnings_after: number;
   hard_errors_after: number;
+}
+
+export interface ScenarioRuleChange {
+  rule_name: string;
+  severity: "hard" | "soft";
+  date: string;
+  employee_id: string;
+  message: string;
+}
+
+export interface ScenarioResult {
+  verdict: string;
+  score: number;
+  employee_id: string;
+  employee_name: string;
+  date: string;
+  desired_shift: string;
+  direct: string[];
+  chain: string[];
+  risks: string[];
+  decisionLog: string[];
+  new_errors: ScenarioRuleChange[];
+  resolved_errors: ScenarioRuleChange[];
+  hard_errors_before: number;
+  hard_errors_after: number;
+  soft_warnings_before: number;
+  soft_warnings_after: number;
+}
+
+export interface WishReportItem {
+  employee_id: string;
+  employee_name: string;
+  group: string;
+  date: string;
+  desired: string;
+  actual: string;
+  fulfilled: boolean;
+  reason: string;
+}
+
+export interface WishReportGroup {
+  group: string;
+  total_wishes: number;
+  fulfilled: number;
+  unfulfilled: number;
+  fulfillment_rate: number;
+}
+
+export interface WishReport {
+  year: number;
+  month: number;
+  group: string | null;
+  total_wishes: number;
+  fulfilled: number;
+  unfulfilled: number;
+  fulfillment_rate: number;
+  items: WishReportItem[];
+  summary: string[];
+  group_breakdown?: WishReportGroup[];
+  blocker_counts?: Record<string, number>;
+}
+
+export interface StaffingReportRow {
+  group: string;
+  date: string;
+  slot: string;
+  required: number;
+  staffed: number;
+  diff: number;
+  status: "brist" | "ok" | "överskott";
+}
+
+export interface StaffingReport {
+  year: number;
+  month: number;
+  group: string | null;
+  rows: StaffingReportRow[];
+  total_required: number;
+  total_staffed: number;
+  shortage_slots: number;
+  surplus_slots: number;
+  ok_slots: number;
+  summary: string[];
+}
+
+export interface FairnessReportProposal {
+  agent: string;
+  group: string;
+  date: string;
+  from_employee_id: string;
+  from_employee_name: string;
+  to_employee_id: string;
+  to_employee_name: string;
+  action: string;
+  reason: string;
+  proof: string;
+  effect: string;
+  status: "kan appliceras" | "stoppad";
+  hard_errors_before: number;
+  hard_errors_after: number;
+}
+
+export interface FairnessReport {
+  year: number;
+  month: number;
+  group: string | null;
+  agent: string;
+  proposals: FairnessReportProposal[];
+  can_apply: number;
+  stopped: number;
+  summary: string[];
 }
 
 export interface Bemanningskrav {

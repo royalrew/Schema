@@ -1,8 +1,8 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { 
-  BookOpen, Scale, User, ShieldAlert, Sparkles, Percent, HelpCircle, Check, ArrowLeft, Layers, Info, ThumbsUp, ThumbsDown, Copy, CheckCircle, MessageSquare
+import {
+  BookOpen, User, ShieldAlert, Sparkles, Percent, Layers, Info, ListChecks
 } from "lucide-react";
 import { AuthGuard } from "@/components/AuthGuard";
 import { AdminLayout } from "@/components/AdminLayout";
@@ -206,18 +206,6 @@ const SPECIFICATIONS: SpecItem[] = [
       "Detta säkerställer att alla medarbetare alltid når exakt sitt kontrakterade sysselsättningsmål per schemaperiod."
     ]
   },
-
-  {
-    id: "hours-obokad-length",
-    category: "hours",
-    title: "Ett obokad-pass är max 8 timmar och 30 minuter per dag",
-    desc: "Ett enskilt obokad-pass läggs ut som längst 8 h 30 min på en dag (07:00–15:30). Behöver en person fler timmar fördelas de på flera lediga dagar — aldrig som ett orimligt långt pass på en och samma dag.",
-    bullets: [
-      "Exempel: en person som saknar 24 timmar får inte ett 24-timmarspass, utan t.ex. tre obokad-pass på olika dagar.",
-      "Fråga till Sara: Stämmer det att 8 h 30 min är rätt maxlängd för ett obokad-pass hos er, eller ska det vara något annat (t.ex. 8 h)?"
-    ]
-  },
-
   {
     id: "hours-obokad-counts",
     category: "hours",
@@ -225,13 +213,11 @@ const SPECIFICATIONS: SpecItem[] = [
     desc: "OBOKAD tid räknas som schemalagd närvaro mot personens kontraktstimmar — personen är på jobbet och tillgänglig. Tiden kan tas i anspråk av den egna gruppen eller lånas ut till en annan grupp som behöver hjälp. När systemet fyllt på med obokad anses timbalansen alltså vara uppfylld.",
     bullets: [
       "Både obokad och kontorstid räknas in i månadens timmar — det är arbetstid, inte en lucka i schemat.",
-      "Om en person ligger under sitt timmål kan AI-assistenten i korrigeringsläget föreslå att fylla på med obokad tid på lediga dagar och deldagar (delar av en dag), med hänsyn till 11h dygnsvila och kontraktets tillåtna veckodagar.",
+      "Om en person ligger under sitt timmål kan AI-assistenten i korrigeringsläget föreslå att fylla på med obokad tid på lediga dagar och deldagar, med hänsyn till 11h dygnsvila och kontraktets tillåtna veckodagar.",
       "Tanken är att detta ska samspela med kontorstid — vissa personer ska kunna få kontorstid ibland istället för ren obokad.",
-      "Detta motsvarar hur samordnarna idag fyller de små hålen manuellt efter att alla grupper lagts; i värsta fall används vikarier.",
-      "Fråga till Sara: Stämmer det att obokad tid ska räknas som fullgjorda kontraktstimmar? Och är obokad/kontorstid rätt sätt att täcka ett underskott, eller vill ni hellre lösa det på annat sätt?"
+      "Detta motsvarar hur samordnarna idag fyller de små hålen manuellt efter att alla grupper lagts; i värsta fall används vikarier."
     ]
   },
-
   {
     id: "hours-balance-threshold",
     category: "hours",
@@ -240,8 +226,7 @@ const SPECIFICATIONS: SpecItem[] = [
     bullets: [
       "Exempel: En person ska jobba 159 timmar i juni men schemat ger henne bara 140 timmar — det är 19 timmar för lite och systemet flaggar detta direkt.",
       "Systemet föreslår då automatiskt att lägga in 'obokad tid' (administrationstid) på hennes lediga dagar för att täcka upp.",
-      "Om schemat istället ger henne 178 timmar — 19 timmar för mycket — varnar systemet så att du kan justera manuellt.",
-      "Fråga till Sara: Är 15 timmar rätt gräns, eller känns det för snävt/för brett utifrån hur ni brukar ligga?"
+      "Om schemat istället ger henne 178 timmar — 19 timmar för mycket — varnar systemet så att du kan justera manuellt."
     ]
   },
 
@@ -325,7 +310,7 @@ const SPECIFICATIONS: SpecItem[] = [
     id: "soft-wish-clashes",
     category: "soft-rules",
     title: "Önskemålskorrigering (Clash resolution)",
-    desc: "How systemet löser 'tokigheter' när för många har önskat samma passtyp en viss dag.",
+    desc: "Hur systemet löser 'tokigheter' när för många har önskat samma passtyp en viss dag.",
     bullets: [
       "Överskott av dag-önskemål: Dagansvariga och dagtidskontrakt prioriteras för dagpassen. Ordinarie personal (varierande) flyttas automatiskt till kvällspass om det behövs för att täcka kvällsbehovet.",
       "Överskott av kvälls-önskemål: Kvällskontrakt prioriteras för kvällspassen. Ordinarie personal flyttas automatiskt till dagpass.",
@@ -364,106 +349,19 @@ const SPECIFICATIONS: SpecItem[] = [
   }
 ];
 
+const SECTIONS = [
+  { id: "overview", label: "Systemöversikt", icon: BookOpen },
+  { id: "roles", label: "Roller & Behörigheter", icon: User },
+  { id: "contracts", label: "Anställningsformer", icon: Layers },
+  { id: "hours", label: "Tim- & Tjänstgöringsberäkning", icon: Percent },
+  { id: "hard-rules", label: "Hårda regler (Lagar/Avtal)", icon: ShieldAlert },
+  { id: "soft-rules", label: "Mjuka regler (Rättvisa/Önskemål)", icon: Sparkles },
+] as const;
+
 export default function SystembeskrivningPage() {
   const [activeSection, setActiveSection] = useState<Section>("overview");
-  const [feedback, setFeedback] = useState<Record<string, { status: "ok" | "fail"; comment: string }>>({});
-  const [saraNotes, setSaraNotes] = useState<string>("");
-  const [showFeedbackSummary, setShowFeedbackSummary] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  // Load feedback and notes from LocalStorage on mount
-  useEffect(() => {
-    const saved = localStorage.getItem("sara_schema_feedback");
-    if (saved) {
-      try {
-        setFeedback(JSON.parse(saved));
-      } catch (e) {
-        console.error("Kunde inte ladda sparad feedback", e);
-      }
-    }
-    const savedNotes = localStorage.getItem("sara_general_notes");
-    if (savedNotes) {
-      setSaraNotes(savedNotes);
-    }
-  }, []);
-
-  // Save feedback when it changes
-  const updateFeedback = (id: string, status: "ok" | "fail", comment: string = "") => {
-    const next = {
-      ...feedback,
-      [id]: { status, comment }
-    };
-    setFeedback(next);
-    localStorage.setItem("sara_schema_feedback", JSON.stringify(next));
-  };
-
-  const updateNotes = (val: string) => {
-    setSaraNotes(val);
-    localStorage.setItem("sara_general_notes", val);
-  };
-
-  const clearAllFeedback = () => {
-    if (window.confirm("Vill du rensa all feedback och anteckningar du lagt in?")) {
-      setFeedback({});
-      setSaraNotes("");
-      localStorage.removeItem("sara_schema_feedback");
-      localStorage.removeItem("sara_general_notes");
-    }
-  };
-
-  const getSummaryText = () => {
-    let text = `=== SYSTEMFEEDBACK FRÅN MÖTE MED SARA ===\n`;
-    text += `Datum: ${new Date().toLocaleDateString("sv-SE")}\n\n`;
-
-    if (saraNotes) {
-      text += `=== SARA'S ALLMÄNNA ÖNSKEMÅL & ANTECKNINGAR ===\n`;
-      text += `${saraNotes}\n\n`;
-    }
-
-    text += `=== DETALJERADE PUNKTER ===\n`;
-    SPECIFICATIONS.forEach(s => {
-      const fb = feedback[s.id];
-      if (fb) {
-        const statusText = fb.status === "ok" ? "STÄMMER [✓]" : "BEHÖVER ÄNDRAS [⚠]";
-        text += `- ${s.title} (${s.category})\n`;
-        text += `  Status: ${statusText}\n`;
-        if (fb.comment) {
-          text += `  Kommentar: "${fb.comment}"\n`;
-        }
-        text += `\n`;
-      }
-    });
-
-    const unanswered = SPECIFICATIONS.filter(s => !feedback[s.id]);
-    if (unanswered.length > 0) {
-      text += `Ej granskade punkter:\n`;
-      unanswered.forEach(u => {
-        text += `- ${u.title}\n`;
-      });
-    }
-
-    return text;
-  };
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(getSummaryText());
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const SECTIONS = [
-    { id: "overview", label: "Systemöversikt", icon: BookOpen },
-    { id: "roles", label: "Roller & Behörigheter", icon: User },
-    { id: "contracts", label: "Anställningsformer", icon: Layers },
-    { id: "hours", label: "Tim- & Tjänstgöringsberäkning", icon: Percent },
-    { id: "hard-rules", label: "Hårda regler (Lagar/Avtal)", icon: ShieldAlert },
-    { id: "soft-rules", label: "Mjuka regler (Rättvisa/Önskemål)", icon: Sparkles },
-  ] as const;
 
   const currentSpecs = SPECIFICATIONS.filter(s => s.category === activeSection);
-  const reviewedCount = Object.keys(feedback).length;
-  const totalCount = SPECIFICATIONS.length;
-  const percentReviewed = Math.round((reviewedCount / totalCount) * 100);
 
   return (
     <AuthGuard requiredRole="superadmin">
@@ -473,141 +371,84 @@ export default function SystembeskrivningPage() {
           <div className="absolute top-0 right-0 w-[400px] h-[400px] rounded-full bg-amber/10 blur-3xl pointer-events-none" />
           <div className="absolute bottom-20 -left-20 w-[500px] h-[500px] rounded-full bg-sage/10 blur-3xl pointer-events-none" />
 
-        <main className="max-w-4xl mx-auto px-6 relative z-10 space-y-10">
-          {/* Page Title */}
-          <header className="space-y-4">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <main className="max-w-4xl mx-auto px-6 relative z-10 space-y-10">
+            {/* Page Title */}
+            <header className="space-y-4 pt-2">
               <div className="space-y-2">
                 <h1 className="display text-3xl md:text-4xl tracking-tight">
                   Systembeskrivning & <span className="text-terracotta">Schema-specifikation</span>
                 </h1>
                 <p className="text-sm text-ink-soft leading-relaxed max-w-2xl">
-                  Denna sida sammanfattar alla regler, behörigheter och beräkningsmodeller som ligger till grund för Töreboda hemtjänstschema i Sintari. Gå igenom dessa steg för steg med Sara under er demonstration.
+                  Detta är dokumentationen över alla regler, behörigheter och beräkningsmodeller som ligger till grund för Töreboda hemtjänstschema i Sintari. Sidan är en ren referens — den ändras inte härifrån.
                 </p>
               </div>
 
-              {/* Progress Card */}
-              <div className="bg-white/80 border border-ink/8 rounded-2xl p-4 min-w-[200px] space-y-2 shrink-0 shadow-sm">
-                <div className="flex justify-between text-xs font-bold text-ink">
-                  <span>Gransknings-framsteg</span>
-                  <span>{reviewedCount} / {totalCount} ({percentReviewed}%)</span>
+              {/* Hänvisning till genomgången */}
+              <div className="bg-white/70 border border-ink/8 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <ListChecks size={18} className="text-terracotta shrink-0 mt-0.5" />
+                  <p className="text-xs text-ink-soft leading-relaxed max-w-xl">
+                    Ska du gå igenom reglerna med Sara och notera vad som behöver ändras? Det görs i
+                    <span className="font-semibold text-ink"> Genomgång med Sara</span> under Inställningar.
+                  </p>
                 </div>
-                <div className="w-full bg-ink/10 h-2 rounded-full overflow-hidden">
-                  <div 
-                    className="bg-terracotta h-full transition-all duration-300" 
-                    style={{ width: `${percentReviewed}%` }} 
-                  />
-                </div>
-                <p className="text-[10px] text-ink-soft">
-                  Klicka på <span className="text-green-700 font-bold">Ja, stämmer</span> eller <span className="text-amber-700 font-bold">Behöver ändras</span> för varje specifikation.
-                </p>
-              </div>
-            </div>
-          </header>
-
-          {/* ── Tabs / Navigation ── */}
-          <div className="flex flex-wrap gap-2 border-b border-ink/8 pb-4">
-            {SECTIONS.map(s => {
-              const Icon = s.icon;
-              const isCompleted = SPECIFICATIONS.filter(sp => sp.category === s.id).every(sp => feedback[sp.id]);
-              return (
-                <button
-                  key={s.id}
-                  onClick={() => setActiveSection(s.id)}
-                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer relative ${
-                    activeSection === s.id
-                      ? "bg-terracotta text-white shadow-sm"
-                      : "bg-white border border-ink/8 text-ink-soft hover:bg-ink/5 hover:text-ink"
-                  }`}
+                <Link
+                  href="/installningar?tab=genomgang"
+                  className="shrink-0 bg-terracotta hover:bg-clay text-white px-4 py-2 rounded-xl text-xs font-bold transition-colors text-center"
                 >
-                  <Icon size={14} />
-                  {s.label}
-                  {isCompleted && (
-                    <span className="w-2 h-2 rounded-full bg-green-500 absolute -top-1 -right-1 border border-white" />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* ── Content Area ── */}
-          <div className="bg-white/70 backdrop-blur-md border border-white/40 rounded-3xl p-6 md:p-8 shadow-xl shadow-clay/5 space-y-8 min-h-[400px]">
-            
-            <div className="space-y-6">
-              <div className="flex items-center gap-2 pb-2 border-b border-ink/8">
-                <h2 className="text-lg font-bold text-ink flex items-center gap-2 capitalize">
-                  {activeSection === "overview" && <BookOpen size={18} className="text-terracotta" />}
-                  {activeSection === "roles" && <User size={18} className="text-terracotta" />}
-                  {activeSection === "contracts" && <Layers size={18} className="text-terracotta" />}
-                  {activeSection === "hours" && <Percent size={18} className="text-terracotta" />}
-                  {activeSection === "hard-rules" && <ShieldAlert size={18} className="text-red-600" />}
-                  {activeSection === "soft-rules" && <Sparkles size={18} className="text-amber-500" />}
-                  {SECTIONS.find(s => s.id === activeSection)?.label}
-                </h2>
+                  Öppna genomgång
+                </Link>
               </div>
+            </header>
 
-              {/* List of current section specs */}
+            {/* ── Tabs / Navigation ── */}
+            <div className="flex flex-wrap gap-2 border-b border-ink/8 pb-4">
+              {SECTIONS.map(s => {
+                const Icon = s.icon;
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => setActiveSection(s.id)}
+                    className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      activeSection === s.id
+                        ? "bg-terracotta text-white shadow-sm"
+                        : "bg-white border border-ink/8 text-ink-soft hover:bg-ink/5 hover:text-ink"
+                    }`}
+                  >
+                    <Icon size={14} />
+                    {s.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* ── Content Area ── */}
+            <div className="bg-white/70 backdrop-blur-md border border-white/40 rounded-3xl p-6 md:p-8 shadow-xl shadow-clay/5 space-y-8 min-h-[400px]">
               <div className="space-y-6">
-                {currentSpecs.map((spec) => {
-                  const itemFeedback = feedback[spec.id];
-                  
-                  return (
-                    <div 
-                      key={spec.id} 
-                      className={`border rounded-2xl p-5 md:p-6 transition-all bg-white shadow-xs space-y-4 ${
-                        itemFeedback?.status === "ok" 
-                          ? "border-green-300 bg-green-50/20" 
-                          : itemFeedback?.status === "fail" 
-                            ? "border-amber-300 bg-amber-50/20" 
-                            : "border-ink/8"
-                      }`}
-                    >
-                      <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-                        <div className="space-y-1">
-                          <h3 className="font-bold text-sm text-ink flex items-center gap-2">
-                            {spec.title}
-                            {itemFeedback?.status === "ok" && (
-                              <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full font-normal flex items-center gap-1">
-                                <Check size={10} /> Stämmer
-                              </span>
-                            )}
-                            {itemFeedback?.status === "fail" && (
-                              <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-normal flex items-center gap-1">
-                                <AlertTriangle size={10} className="text-amber-700" /> Ändring önskas
-                              </span>
-                            )}
-                          </h3>
-                          <p className="text-xs text-ink-soft leading-relaxed">
-                            {spec.desc}
-                          </p>
-                        </div>
+                <div className="flex items-center gap-2 pb-2 border-b border-ink/8">
+                  <h2 className="text-lg font-bold text-ink flex items-center gap-2 capitalize">
+                    {activeSection === "overview" && <BookOpen size={18} className="text-terracotta" />}
+                    {activeSection === "roles" && <User size={18} className="text-terracotta" />}
+                    {activeSection === "contracts" && <Layers size={18} className="text-terracotta" />}
+                    {activeSection === "hours" && <Percent size={18} className="text-terracotta" />}
+                    {activeSection === "hard-rules" && <ShieldAlert size={18} className="text-red-600" />}
+                    {activeSection === "soft-rules" && <Sparkles size={18} className="text-amber-500" />}
+                    {SECTIONS.find(s => s.id === activeSection)?.label}
+                  </h2>
+                </div>
 
-                        {/* Interactive Buttons */}
-                        <div className="flex gap-2 shrink-0">
-                          <button
-                            onClick={() => updateFeedback(spec.id, "ok")}
-                            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-[10px] font-bold border cursor-pointer transition-colors ${
-                              itemFeedback?.status === "ok"
-                                ? "bg-green-600 border-green-600 text-white"
-                                : "bg-white border-green-200 text-green-700 hover:bg-green-50"
-                            }`}
-                          >
-                            <ThumbsUp size={12} /> Stämmer
-                          </button>
-                          <button
-                            onClick={() => updateFeedback(spec.id, "fail", itemFeedback?.comment ?? "")}
-                            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-[10px] font-bold border cursor-pointer transition-colors ${
-                              itemFeedback?.status === "fail"
-                                ? "bg-amber-600 border-amber-600 text-white"
-                                : "bg-white border-amber-200 text-amber-700 hover:bg-amber-50"
-                            }`}
-                          >
-                            <ThumbsDown size={12} /> Behöver ändras
-                          </button>
-                        </div>
+                {/* List of current section specs */}
+                <div className="space-y-6">
+                  {currentSpecs.map((spec) => (
+                    <div
+                      key={spec.id}
+                      className="border border-ink/8 rounded-2xl p-5 md:p-6 bg-white shadow-xs space-y-4"
+                    >
+                      <div className="space-y-1">
+                        <h3 className="font-bold text-sm text-ink">{spec.title}</h3>
+                        <p className="text-xs text-ink-soft leading-relaxed">{spec.desc}</p>
                       </div>
 
-                      {/* Display bullets or details */}
                       {spec.bullets && (
                         <ul className="list-disc pl-5 space-y-1 text-xs text-ink-soft/80">
                           {spec.bullets.map((b, idx) => (
@@ -624,237 +465,31 @@ export default function SystembeskrivningPage() {
                           </pre>
                         </div>
                       )}
-
-                      {/* Comment section when Behöver ändras is clicked */}
-                      {itemFeedback?.status === "fail" && (
-                        <div className="space-y-1.5 pt-2 border-t border-amber-200">
-                          <label className="block text-[10px] font-bold text-amber-900 flex items-center gap-1">
-                            <MessageSquare size={12} /> Vad stämmer inte? Skriv Saras synpunkter/ändringar här:
-                          </label>
-                          <textarea
-                            value={itemFeedback.comment}
-                            onChange={(e) => updateFeedback(spec.id, "fail", e.target.value)}
-                            placeholder="T.ex: I Töreboda räknar vi heltid på 38,25h istället för 37h... eller dygnsvilan måste vara stenhård utan undantag."
-                            className="w-full text-xs p-2.5 border border-amber-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/40 bg-white min-h-[60px]"
-                          />
-                        </div>
-                      )}
                     </div>
-                  );
-                })}
-              </div>
-
-              {/* Informative advice at bottom of section */}
-              {activeSection === "hours" && (
-                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex gap-3">
-                  <Info size={16} className="text-amber-700 shrink-0 mt-0.5" />
-                  <div className="text-[11px] text-amber-800 leading-relaxed space-y-1">
-                    <span className="font-bold text-amber-900 block">Viktig diskussionspunkt med Sara:</span>
-                    <p>Kontrollera att tim-beräkningen (formeln) stämmer med hur ni räknar i Töreboda kommun. Särskilt hur ni gör när personal har deltid (gått ner i sysselsättningsgrad).</p>
-                    <p>Sintaris metod är att <strong>automatiskt fyllnadsschemalägga OBOKAD tid</strong> på lediga dagar för att täcka upp eventuella timunderskott, vilket garanterar att de landar på exakt rätt planerade timmar vid månadens slut.</p>
-                  </div>
+                  ))}
                 </div>
-              )}
+
+                {/* Informative advice at bottom of hours section */}
+                {activeSection === "hours" && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex gap-3">
+                    <Info size={16} className="text-amber-700 shrink-0 mt-0.5" />
+                    <div className="text-[11px] text-amber-800 leading-relaxed space-y-1">
+                      <span className="font-bold text-amber-900 block">Om timberäkningen</span>
+                      <p>Kontrollera att tim-beräkningen (formeln) stämmer med hur ni räknar i Töreboda kommun — särskilt hur ni gör när personal har deltid (gått ner i sysselsättningsgrad).</p>
+                      <p>Sintaris metod är att <strong>automatiskt fyllnadsschemalägga OBOKAD tid</strong> på lediga dagar för att täcka upp eventuella timunderskott, vilket garanterar att de landar på exakt rätt planerade timmar vid månadens slut.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
-          </div>
-
-          {/* ── Feedback summary & Action buttons ── */}
-          <div className="grid md:grid-cols-2 gap-6">
-            
-            {/* Left: Summary checklist */}
-            <section className="bg-cream/20 border border-dashed border-ink/20 rounded-[2rem] p-6 md:p-8 space-y-6 flex flex-col justify-between">
-              <div className="space-y-4">
-                <div className="space-y-1">
-                  <h3 className="text-base font-bold text-ink">Sammanställning & Feedback</h3>
-                  <p className="text-xs text-ink-soft leading-relaxed">
-                    Granska era svar löpande under mötet. När ni gått igenom punkterna kan du visa översikten eller kopiera all feedback till urklipp.
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => setShowFeedbackSummary(!showFeedbackSummary)}
-                    className="px-4 py-2 bg-white border border-ink/8 text-ink text-xs font-bold rounded-xl hover:bg-ink/5 cursor-pointer flex items-center gap-1.5 transition-colors"
-                  >
-                    <ClipboardList size={14} /> 
-                    {showFeedbackSummary ? "Dölj översikt" : "Visa översikt"} ({reviewedCount})
-                  </button>
-                  <button
-                    onClick={copyToClipboard}
-                    disabled={reviewedCount === 0 && !saraNotes}
-                    className="px-4 py-2 bg-terracotta text-white text-xs font-bold rounded-xl hover:bg-clay disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5 transition-colors"
-                  >
-                    <Copy size={14} /> 
-                    {copied ? "Kopierat!" : "Kopiera feedback"}
-                  </button>
-                  {(reviewedCount > 0 || saraNotes) && (
-                    <button
-                      onClick={clearAllFeedback}
-                      className="px-3 py-2 border border-red-200 text-red-600 bg-white text-xs font-bold rounded-xl hover:bg-red-50 cursor-pointer transition-colors"
-                    >
-                      Rensa
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Expanded Feedback view */}
-              {showFeedbackSummary && (
-                <div className="bg-white border border-ink/8 rounded-2xl p-4 space-y-4 rise mt-4">
-                  <h4 className="font-bold text-xs text-ink pb-2 border-b border-ink/8 flex items-center gap-1.5">
-                    <CheckCircle size={14} className="text-terracotta" /> 
-                    Detaljerad granskning ({reviewedCount} av {totalCount} granskade)
-                  </h4>
-
-                  {reviewedCount === 0 ? (
-                    <p className="text-xs text-ink-soft italic">Ingen specifik feedback har registrerats än. Klicka på knapparna vid reglerna ovan.</p>
-                  ) : (
-                    <div className="divide-y divide-ink/5 max-h-[200px] overflow-y-auto pr-2">
-                      {SPECIFICATIONS.map(s => {
-                        const fb = feedback[s.id];
-                        if (!fb) return null;
-                        return (
-                          <div key={s.id} className="py-2.5 first:pt-0 last:pb-0 flex flex-col justify-between gap-1 text-[11px]">
-                            <div className="flex justify-between items-start">
-                              <h5 className="font-bold text-ink">{s.title}</h5>
-                              <div>
-                                {fb.status === "ok" ? (
-                                  <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-green-700 bg-green-50 px-1.5 py-0.2 rounded">
-                                    Stämmer
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded">
-                                    Ändra
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            {fb.comment && (
-                              <p className="text-[10px] text-amber-800 bg-amber-50/50 p-1.5 rounded border border-amber-100/50 mt-0.5">
-                                &quot;{fb.comment}&quot;
-                              </p>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-            </section>
-
-            {/* Right: Saras allmänna anteckningar & mail (disabled / kommer snart) */}
-            <section className="bg-white border border-ink/8 rounded-[2rem] p-6 md:p-8 space-y-5 flex flex-col justify-between shadow-xs">
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <h3 className="text-base font-bold text-ink">Saras Önskemålslogg & Anteckningar</h3>
-                  <p className="text-xs text-ink-soft leading-relaxed">
-                    Skriv ner allmänna önskemål eller förändringsbehov som inte ryms i reglerna ovan. Allt sparas automatiskt lokalt hos dig.
-                  </p>
-                </div>
-
-                <textarea
-                  value={saraNotes}
-                  onChange={(e) => updateNotes(e.target.value)}
-                  placeholder="Skriv dina allmänna önskemål och anteckningar här... (dessa sparas automatiskt)"
-                  className="w-full text-xs p-3 border border-ink/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-terracotta/40 bg-white min-h-[120px]"
-                />
-              </div>
-
-              {/* Greyed out email reporting segment */}
-              <div className="bg-ink/5 border border-ink/10 rounded-2xl p-4 space-y-3 opacity-60">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                    Kommer snart
-                  </span>
-                  <span className="text-xs font-bold text-ink flex items-center gap-1">
-                    📧 E-postrapportering till Jimmy
-                  </span>
-                </div>
-                <p className="text-[10px] text-ink-soft leading-relaxed">
-                  I nästa steg kommer du kunna skicka denna logg med ett klick direkt till Jimmys e-post. Just nu är funktionen inaktiverad men synlig.
-                </p>
-                <div className="flex gap-2">
-                  <input
-                    type="email"
-                    disabled
-                    value="jimmy@sintari.se"
-                    className="flex-1 bg-ink/10 text-xs px-3 py-2 border border-ink/10 rounded-xl text-ink-soft cursor-not-allowed select-none font-mono"
-                  />
-                  <button
-                    disabled
-                    className="bg-ink/20 text-ink-soft/70 border border-ink/10 text-xs font-bold px-3 py-2 rounded-xl cursor-not-allowed select-none"
-                  >
-                    Skicka e-post
-                  </button>
-                </div>
-              </div>
-            </section>
-
-          </div>
-
-          {/* ── Footer ── */}
-          <footer className="pt-6 border-t border-black/5 text-center flex flex-col sm:flex-row items-center justify-between gap-4">
-            <p className="text-xs text-ink-soft/50">© 2026 Sintari · Töreboda schema-guide för Sara</p>
-          </footer>
-        </main>
-      </div>
+            {/* ── Footer ── */}
+            <footer className="pt-6 border-t border-black/5 text-center">
+              <p className="text-xs text-ink-soft/50">© 2026 Sintari · Töreboda schema-dokumentation</p>
+            </footer>
+          </main>
+        </div>
       </AdminLayout>
     </AuthGuard>
-  );
-}
-
-interface AlertTriangleProps {
-  size?: number;
-  className?: string;
-}
-
-function AlertTriangle({ size = 14, className = "" }: AlertTriangleProps) {
-  return (
-    <svg 
-      xmlns="http://www.w3.org/2000/svg" 
-      width={size} 
-      height={size} 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
-      className={className}
-    >
-      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
-      <line x1="12" y1="9" x2="12" y2="13"/>
-      <line x1="12" y1="17" x2="12.01" y2="17"/>
-    </svg>
-  );
-}
-
-interface ClipboardListProps {
-  size?: number;
-  className?: string;
-}
-
-function ClipboardList({ size = 14, className = "" }: ClipboardListProps) {
-  return (
-    <svg 
-      xmlns="http://www.w3.org/2000/svg" 
-      width={size} 
-      height={size} 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
-      className={className}
-    >
-      <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
-      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
-      <path d="M9 14h6"/>
-      <path d="M9 18h6"/>
-      <path d="M9 10h6"/>
-    </svg>
   );
 }

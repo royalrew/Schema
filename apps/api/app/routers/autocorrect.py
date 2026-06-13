@@ -412,6 +412,102 @@ def _simulate_bemanning(
     return schedule, chosen_id
 
 
+def _dag_tidig_counts(schedule: list[dict], emp_ids: set[str]) -> dict[str, int]:
+    """Antal DAG_TIDIG-pass (06:45) per anställd i schemat."""
+    counts = {eid: 0 for eid in emp_ids}
+    for sd in schedule:
+        if sd["employee_id"] not in emp_ids:
+            continue
+        sh = sd.get("shift") or {}
+        if sh.get("shift_type") == "dag_tidig":
+            counts[sd["employee_id"]] = counts.get(sd["employee_id"], 0) + 1
+    return counts
+
+
+def _simulate_swap_dag_tidig(
+    schedule: list[dict],
+    employees: list[Employee],
+) -> tuple[list[dict], tuple[str, str, str] | None]:
+    """
+    Jämnar ut 06:45-rotationen (DAG_TIDIG) genom att byta passtyp mellan en person
+    som håller FLER 06:45-pass än en annan och en person som SAMMA dag har ett
+    vanligt DAG-pass och håller FÄRRE. Coverage påverkas inte (en dag_tidig + en dag
+    finns kvar) — bara vem som tar det tidiga passet.
+
+    Returnerar (modifierat schema, (from_id, to_id, datestr)) för det byte som mest
+    minskar ojämlikheten, eller (oförändrat schema, None) om inget lagligt byte hjälper.
+    Endast VARIERANDE-personal byter (samma som tilldelningslogiken för 06:45).
+    Sparar INTE till DB.
+    """
+    varierande_ids = {e.id for e in employees if e.contract_type == ContractType.VARIERANDE}
+    if len(varierande_ids) < 2:
+        return schedule, None
+
+    counts = _dag_tidig_counts(schedule, varierande_ids)
+    sched_idx: dict[tuple, int] = {(sd["employee_id"], sd["date"]): i for i, sd in enumerate(schedule)}
+
+    # Dag → (holder av dag_tidig, lista av kandidater med vanlig dag) bland VARIERANDE
+    best = None  # (gap, datestr, holder_id, recipient_id)
+    for sd in schedule:
+        if (sd.get("shift") or {}).get("shift_type") != "dag_tidig":
+            continue
+        holder_id = sd["employee_id"]
+        if holder_id not in varierande_ids:
+            continue
+        datestr = sd["date"]
+        for sd2 in schedule:
+            if sd2["date"] != datestr:
+                continue
+            rid = sd2["employee_id"]
+            if rid == holder_id or rid not in varierande_ids:
+                continue
+            sh2 = sd2.get("shift") or {}
+            if sh2.get("shift_type") != "dag" or sh2.get("is_unbooked"):
+                continue
+            gap = counts.get(holder_id, 0) - counts.get(rid, 0)
+            # Kräv gap >= 2 så bytet strikt minskar ojämlikheten (undviker oscillation).
+            if gap < 2:
+                continue
+            cand = (gap, datestr, holder_id, rid)
+            # Störst gap först; sedan stabilt på datum, holder, recipient.
+            if best is None or (-cand[0], cand[1], cand[2], cand[3]) < (-best[0], best[1], best[2], best[3]):
+                best = cand
+
+    if best is None:
+        return schedule, None
+
+    _, datestr, holder_id, recipient_id = best
+    d = date.fromisoformat(datestr)
+
+    tidig_start = datetime(d.year, d.month, d.day, 6, 45, tzinfo=STOCKHOLM)
+    tidig_end = datetime(d.year, d.month, d.day, 16, 0, tzinfo=STOCKHOLM)
+    dag_start = datetime(d.year, d.month, d.day, 7, 0, tzinfo=STOCKHOLM)
+    dag_end = datetime(d.year, d.month, d.day, 16, 0, tzinfo=STOCKHOLM)
+
+    # Dygnsvila måste hålla för båda efter bytet (mottagaren får tidigare start 06:45).
+    if _violates_dygnsvila(schedule, sched_idx, recipient_id, d, tidig_start, tidig_end):
+        return schedule, None
+    if _violates_dygnsvila(schedule, sched_idx, holder_id, d, dag_start, dag_end):
+        return schedule, None
+
+    schedule = copy.deepcopy(schedule)
+    hi = sched_idx[(holder_id, datestr)]
+    ri = sched_idx[(recipient_id, datestr)]
+    schedule[hi] = {**schedule[hi], "shift": {
+        "shift_type": "dag",
+        "segments": [{"start_time": dag_start.isoformat(), "end_time": dag_end.isoformat()}],
+        "is_unbooked": False,
+        "note": "Rättviseagent — lämnade ifrån sig 06:45",
+    }}
+    schedule[ri] = {**schedule[ri], "shift": {
+        "shift_type": "dag_tidig",
+        "segments": [{"start_time": tidig_start.isoformat(), "end_time": tidig_end.isoformat()}],
+        "is_unbooked": False,
+        "note": "Rättviseagent — övertog 06:45 för rättvis rotation",
+    }}
+    return schedule, (holder_id, recipient_id, datestr)
+
+
 @router.post("/{group}/{year}/{month}/dag-tidig", response_model=FixResult)
 async def fix_dag_tidig(
     group: str, year: int, month: int,
